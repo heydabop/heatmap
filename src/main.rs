@@ -73,10 +73,9 @@ fn main() {
         let x = ((pt.center.lng - map_info.min.lng) * map_info.scale)
             .clamp(0.0, pixels)
             .round() as u32;
-        let y = (pixels
-            - ((pt.center.lat - map_info.min.lat) * map_info.scale)
-                .clamp(0.0, pixels)
-                .round()) as u32;
+        let y = (pixels - (pt.center.lat - map_info.min.lat) * map_info.scale)
+            .clamp(0.0, pixels)
+            .round() as u32;
         map.put_pixel(x, y, Rgb([255, 0, 0]));
     }
 
