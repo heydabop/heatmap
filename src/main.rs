@@ -44,7 +44,7 @@ fn main() {
 
                     let mut lng = 0.0;
                     let mut lat = 0.0;
-                    for attr in e.attributes().map(|a| a.unwrap()) {
+                    for attr in e.attributes().map(Result::unwrap) {
                         match attr.key {
                             b"lat" => {
                                 lat = String::from_utf8(
@@ -71,8 +71,8 @@ fn main() {
                     }
 
                     curr_trk_pt = Some(Box::new(TrkPt {
-                        lat: lat,
-                        lng: lng,
+                        lat,
+                        lng,
                         time: Utc::now(),
                     }));
                 }
@@ -106,13 +106,15 @@ fn main() {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
+
+        buf.clear();
     }
 
     let mut max_lat = -90.0;
     let mut min_lat = 90.0;
     let mut max_lng = -180.0;
     let mut min_lng = 180.0;
-    for pt in trk_pts.iter() {
+    for pt in &trk_pts {
         if pt.lat > max_lat {
             max_lat = pt.lat;
         }
