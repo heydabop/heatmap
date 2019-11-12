@@ -1,15 +1,40 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use std::fmt;
 
+#[derive(PartialEq)]
 pub struct Point {
     pub lat: f64,
     pub lng: f64,
 }
 
+impl fmt::Debug for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}, {}", self.lat, self.lng)
+    }
+}
+
+#[derive(PartialEq)]
 pub struct TrkPt {
     pub center: Point,
     pub time: Option<DateTime<Utc>>,
+}
+
+impl fmt::Debug for TrkPt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?} @ {}",
+            self.center,
+            self.time
+                .unwrap_or_else(|| DateTime::<Utc>::from_utc(
+                    NaiveDateTime::from_timestamp(0, 0),
+                    Utc
+                ))
+                .to_rfc3339()
+        )
+    }
 }
 
 pub struct MapInfo {
@@ -172,6 +197,118 @@ mod tests {
             lng: -89.6150,
         };
         assert!((haversine(&p1, &p2) - 1_242_682.405_520_137_2).abs() < std::f64::EPSILON);
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::unreadable_literal)]
+    fn trk_pts() {
+        let gpx = r#"<?xml version="1.0" encoding="UTF-8"?>
+<gpx xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
+ <metadata>
+  <time>2019-05-09T02:39:00Z</time>
+ </metadata>
+ <trk>
+  <name>Ride</name>
+  <type>1</type>
+  <trkseg>
+   <trkpt lat="30.2430140" lon="-97.8100160">
+    <ele>177.8</ele>
+    <time>2019-11-10T20:49:52Z</time>
+   </trkpt>
+   <trkpt lat="30.2429950" lon="-97.8100270">
+    <ele>177.6</ele>
+    <time>2019-11-10T20:49:53Z</time>
+   </trkpt>
+   <trkpt lat="30.2428630" lon="-97.8101550">
+    <ele>177.9</ele>
+    <time>2019-11-10T20:49:54Z</time>
+   </trkpt>
+   <trkpt lat="30.2428470" lon="-97.8102190">
+    <ele>178.0</ele>
+    <time>2019-11-10T20:49:55Z</time>
+   </trkpt>
+   <trkpt lat="30.2428310" lon="-97.8102830">
+    <ele>178.2</ele>
+    <time>2019-11-10T20:49:56Z</time>
+   </trkpt>
+   <trkpt lat="30.2427670" lon="-97.8105240">
+    <ele>179.0</ele>
+    <time>2019-11-10T20:49:57Z</time>
+   </trkpt>
+   <trkpt lat="30.2427500" lon="-97.8105730">
+    <ele>179.1</ele>
+    <time>2019-11-10T20:49:58Z</time>
+   </trkpt>
+   <trkpt lat="30.2427330" lon="-97.8106130">
+    <ele>179.3</ele>
+    <time>2019-11-10T20:49:59Z</time>
+   </trkpt>
+  </trkseg>
+ </trk>
+</gpx>
+"#;
+        assert_eq!(
+            get_pts(&gpx),
+            vec![
+                TrkPt {
+                    center: Point {
+                        lat: 30.2430140,
+                        lng: -97.8100160
+                    },
+                    time: Some("2019-11-10T20:49:52Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2429950,
+                        lng: -97.8100270
+                    },
+                    time: Some("2019-11-10T20:49:53Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2428630,
+                        lng: -97.8101550
+                    },
+                    time: Some("2019-11-10T20:49:54Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2428470,
+                        lng: -97.8102190
+                    },
+                    time: Some("2019-11-10T20:49:55Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2428310,
+                        lng: -97.8102830
+                    },
+                    time: Some("2019-11-10T20:49:56Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2427670,
+                        lng: -97.8105240
+                    },
+                    time: Some("2019-11-10T20:49:57Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2427500,
+                        lng: -97.8105730
+                    },
+                    time: Some("2019-11-10T20:49:58Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2427330,
+                        lng: -97.8106130
+                    },
+                    time: Some("2019-11-10T20:49:59Z".parse::<DateTime<Utc>>().unwrap())
+                }
+            ]
+        );
     }
 
     #[test]
