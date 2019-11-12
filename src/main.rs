@@ -38,7 +38,7 @@ fn main() {
         }
     }
 
-    let pixels = 1200;
+    let pixels = 1280;
     let map_info = heatmap::calculate_map(
         pixels,
         &heatmap::Point {
@@ -52,6 +52,12 @@ fn main() {
     );
 
     let mapbox_response = reqwest::get(&format!("https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/{},{},{}/{3}x{3}?access_token={4}", map_info.center.lng, map_info.center.lat, map_info.zoom, pixels, access_token)).expect("Error GETing mapbox image");
+    if !mapbox_response.status().is_success() {
+        panic!(
+            "Non success response code {} from mapbox",
+            mapbox_response.status()
+        );
+    }
     let decoder = png::PNGDecoder::new(mapbox_response).expect("Error decoding mapbox response");
     let mut map = RgbImage::from_raw(
         pixels,
@@ -73,13 +79,20 @@ fn main() {
             .clamp(1.0, pixels)
             .round() as u32;
         path_image.put_pixel(x, y, Rgba([255, 0, 0, 255]));
-        for (x1, y1) in vec![(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
-            let p = path_image.get_pixel_mut(x1, y1);
+        for (x1, y1) in &[(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
+            let p = path_image.get_pixel_mut(*x1, *y1);
             let Rgba(data) = *p;
-            *p = Rgba([255, data[1], data[2], (data[3] as u16 + 64).min(255) as u8]);
+            *p = Rgba([
+                255,
+                data[1],
+                data[2],
+                (u16::from(data[3]) + 64).min(255) as u8,
+            ]);
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     for (x, y, path_pixel) in path_image.enumerate_pixels() {
         let Rgba(path_data) = *path_pixel;
         if path_data[3] > 0 {
