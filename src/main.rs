@@ -8,7 +8,7 @@ use std::process;
 struct TrkPt {
     lat: f64,
     lng: f64,
-    time: DateTime<Utc>,
+    time: Option<DateTime<Utc>>,
 }
 
 fn main() {
@@ -47,20 +47,20 @@ fn main() {
                     for attr in e.attributes().map(Result::unwrap) {
                         match attr.key {
                             b"lat" => {
-                                lat = String::from_utf8(
-                                    attr.unescaped_value()
-                                        .expect("Error getting lat from trkpt")
-                                        .to_vec(),
+                                lat = std::str::from_utf8(
+                                    &attr
+                                        .unescaped_value()
+                                        .expect("Error getting lat from trkpt"),
                                 )
                                 .expect("Error parsing lat into string")
                                 .parse()
                                 .expect("Error parsing f64 from lat")
                             }
                             b"lon" => {
-                                lng = String::from_utf8(
-                                    attr.unescaped_value()
-                                        .expect("Error getting lng from trkpt")
-                                        .to_vec(),
+                                lng = std::str::from_utf8(
+                                    &attr
+                                        .unescaped_value()
+                                        .expect("Error getting lng from trkpt"),
                                 )
                                 .expect("Error parsing lng into string")
                                 .parse()
@@ -73,7 +73,7 @@ fn main() {
                     curr_trk_pt = Some(Box::new(TrkPt {
                         lat,
                         lng,
-                        time: Utc::now(),
+                        time: None,
                     }));
                 }
                 b"time" => {
@@ -95,11 +95,12 @@ fn main() {
             },
             Ok(Event::Text(e)) => {
                 if in_time {
-                    curr_trk_pt.as_mut().unwrap().time = e
-                        .unescape_and_decode(&reader)
-                        .unwrap()
-                        .parse::<DateTime<Utc>>()
-                        .expect("Error parsing timestamp from time")
+                    curr_trk_pt.as_mut().unwrap().time = Some(
+                        e.unescape_and_decode(&reader)
+                            .unwrap()
+                            .parse::<DateTime<Utc>>()
+                            .expect("Error parsing timestamp from time"),
+                    )
                 }
             }
             Ok(Event::Eof) => break,
