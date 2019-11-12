@@ -2,10 +2,19 @@ use chrono::{DateTime, Utc};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-pub struct TrkPt {
+pub struct Point {
     pub lat: f64,
     pub lng: f64,
+}
+
+pub struct TrkPt {
+    pub center: Point,
     pub time: Option<DateTime<Utc>>,
+}
+
+pub struct MapInfo {
+    pub center: Point,
+    pub zoom: f64,
 }
 
 pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
@@ -61,8 +70,7 @@ pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
                     }
 
                     trk_pts.push(TrkPt {
-                        lat,
-                        lng,
+                        center: Point { lat, lng },
                         time: None,
                     });
 
@@ -106,13 +114,13 @@ pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
     trk_pts
 }
 
-pub fn haversine(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
+pub fn haversine(p1: &Point, p2: &Point) -> f64 {
     let r = 6371e3; // earth mean radius in meters
 
-    let lat_rad_1 = lat1.to_radians();
-    let lat_rad_2 = lat2.to_radians();
-    let lat_delta = (lat2 - lat1).to_radians();
-    let lng_delta = (lng2 - lng1).to_radians();
+    let lat_rad_1 = p1.lat.to_radians();
+    let lat_rad_2 = p2.lat.to_radians();
+    let lat_delta = (p2.lat - p1.lat).to_radians();
+    let lng_delta = (p2.lng - p1.lng).to_radians();
 
     let lat_sin = (lat_delta / 2.0).sin();
     let lng_sin = (lng_delta / 2.0).sin();
@@ -132,9 +140,14 @@ mod tests {
 
     #[test]
     fn haversine_test() {
-        assert!(
-            (haversine(31.2626, -100.3555, 38.1345, -89.6150) - 1_242_682.405_520_137_2).abs()
-                < std::f64::EPSILON
-        );
+        let p1 = Point {
+            lat: 31.2626,
+            lng: -100.3555,
+        };
+        let p2 = Point {
+            lat: 38.1345,
+            lng: -89.6150,
+        };
+        assert!((haversine(&p1, &p2) - 1_242_682.405_520_137_2).abs() < std::f64::EPSILON);
     }
 }
