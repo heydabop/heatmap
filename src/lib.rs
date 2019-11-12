@@ -3,6 +3,8 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::fmt;
 
+const R: f64 = 6371e3; // earth mean radius in meters
+
 #[derive(PartialEq)]
 pub struct Point {
     pub lat: f64,
@@ -144,8 +146,6 @@ pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
 
 #[must_use]
 pub fn haversine(p1: &Point, p2: &Point) -> f64 {
-    let r = 6371e3; // earth mean radius in meters
-
     let lat_rad_1 = p1.lat.to_radians();
     let lat_rad_2 = p2.lat.to_radians();
     let lat_delta = (p2.lat - p1.lat).to_radians();
@@ -160,7 +160,24 @@ pub fn haversine(p1: &Point, p2: &Point) -> f64 {
     );
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
 
-    r * c
+    R * c
+}
+
+#[must_use]
+pub fn destination(p: &Point, bearing: f64, distance: f64) -> Point {
+    let ang_dist = distance / R;
+
+    let lat_rad = p.lat.to_radians();
+    let b_rad = bearing.to_radians();
+
+    let lat = (lat_rad.sin() * ang_dist.cos() + lat_rad.cos() * ang_dist.sin() * b_rad.cos())
+        .asin()
+        .to_degrees();
+    let lng = p.lng
+        + (b_rad.sin() * ang_dist.sin() * lat_rad.sin())
+            .atan2(ang_dist.cos() - lat_rad.sin() * lat.to_radians().sin())
+            .to_degrees();
+    Point { lat, lng }
 }
 
 #[must_use]
@@ -222,6 +239,20 @@ mod tests {
             lng: -89.6150,
         };
         assert!((haversine(&p1, &p2) - 1_242_682.405_520_137_2).abs() < std::f64::EPSILON);
+    }
+
+    #[test]
+    fn destination_test() {
+        let dest = destination(
+            &Point {
+                lat: 30.343_888,
+                lng: -103.970_1,
+            },
+            0.0,
+            300.0,
+        );
+        assert!((dest.lat - 30.346_585_964_817_75).abs() < std::f64::EPSILON);
+        assert!((dest.lng - -103.9701).abs() < std::f64::EPSILON);
     }
 
     #[test]
