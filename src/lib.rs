@@ -134,6 +134,29 @@ pub fn haversine(p1: &Point, p2: &Point) -> f64 {
     r * c
 }
 
+pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
+    let lat = min.lat + (max.lat - min.lat) / 2.0;
+    let lng = min.lng + (max.lng - min.lng) / 2.0;
+
+    let map_width_meters = haversine(&Point { lat, lng: min.lng }, &Point { lat, lng: max.lng });
+    let map_height_meters = haversine(&Point { lat: min.lat, lng }, &Point { lat: max.lat, lng });
+    let map_meters = map_height_meters.max(map_width_meters);
+
+    println!("meters: {}, {}", map_width_meters, map_height_meters);
+
+    let meters_per_pixel = map_meters / f64::from(pixels);
+    println!("meters per pixel: {}", meters_per_pixel);
+
+    let zoom = ((10_018_755.0 * lat.to_radians().cos()) / meters_per_pixel).ln()
+        / std::f64::consts::LN_2
+        - 7.0;
+
+    MapInfo {
+        center: Point { lat, lng },
+        zoom,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,5 +172,41 @@ mod tests {
             lng: -89.6150,
         };
         assert!((haversine(&p1, &p2) - 1_242_682.405_520_137_2).abs() < std::f64::EPSILON);
+    }
+
+    #[test]
+    fn wide_map() {
+        let map_info = calculate_map(
+            800,
+            &Point {
+                lat: 33.989_316,
+                lng: -118.500_123,
+            },
+            &Point {
+                lat: 34.105_721,
+                lng: -118.246_575,
+            },
+        );
+        assert!((map_info.center.lat - 34.047_518_5).abs() < std::f64::EPSILON);
+        assert!((map_info.center.lng + 118.373_349).abs() < std::f64::EPSILON);
+        assert!((map_info.zoom - 11.116_994_223_947_59).abs() < std::f64::EPSILON);
+    }
+
+    #[test]
+    fn tall_map() {
+        let map_info = calculate_map(
+            800,
+            &Point {
+                lat: 33.979_119,
+                lng: -118.497_911,
+            },
+            &Point {
+                lat: 34.016_201,
+                lng: -118.462_638,
+            },
+        );
+        assert!((map_info.center.lat - 33.997_659_999_999_996).abs() < std::f64::EPSILON);
+        assert!((map_info.center.lng + 118.480_274_500_000_01).abs() < std::f64::EPSILON);
+        assert!((map_info.zoom - 13.620_010_920_097_176).abs() < std::f64::EPSILON);
     }
 }
