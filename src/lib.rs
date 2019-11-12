@@ -43,7 +43,7 @@ pub struct MapInfo {
     pub center: Point,
     pub min: Point,
     pub zoom: f64,
-    pub scale: f64,
+    pub scale: Point,
 }
 
 #[must_use]
@@ -174,7 +174,7 @@ pub fn destination(p: &Point, bearing: f64, distance: f64) -> Point {
         .asin()
         .to_degrees();
     let lng = p.lng
-        + (b_rad.sin() * ang_dist.sin() * lat_rad.sin())
+        + (b_rad.sin() * ang_dist.sin() * lat_rad.cos())
             .atan2(ang_dist.cos() - lat_rad.sin() * lat.to_radians().sin())
             .to_degrees();
     Point { lat, lng }
@@ -191,34 +191,30 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
     let map_height_meters = haversine(&Point { lat: min.lat, lng }, &Point { lat: max.lat, lng });
     let map_meters = map_height_meters.max(map_width_meters);
 
-    println!("meters: {}, {}", map_width_meters, map_height_meters);
-
-    let meters_per_pixel = map_meters / pixels;
-    println!("meters per pixel: {}", meters_per_pixel);
-
-    let lat_delta = max.lat - min.lat;
-    let lng_delta = max.lng - min.lng;
-    println!("delta: {}, {}", lng_delta, lat_delta);
-    println!(
-        "delta/meters: {:e}, {:e}",
-        lng_delta / map_width_meters,
-        lat_delta / map_height_meters
-    );
-    let map_delta = (lat_delta).max(lng_delta);
-    let scale = pixels / map_delta;
-    println!("delta: {}, scale: {}", map_delta, scale);
+    let meters_per_pixel = (map_meters / pixels) * 1.1;
 
     let zoom = ((10_018_755.0 * lat.to_radians().cos()) / meters_per_pixel).ln()
         / std::f64::consts::LN_2
         - 7.0;
 
-    let half_delta = map_delta / 2.0;
+    let center = Point { lat, lng };
+
+    let diagonal = ((meters_per_pixel * pixels / 2.0).powi(2) * 2.0).sqrt();
+    let min = destination(&center, 315.0, diagonal);
+    let max = destination(&center, 135.0, diagonal);
+    let scale = Point {
+        lat: pixels / (max.lat - min.lat),
+        lng: pixels / (max.lng - min.lng),
+    };
+
+    println!(
+        "center: {:?}\nmin: {:?}\n zoom: {}\nscale:{:?}",
+        center, min, zoom, scale
+    );
+
     MapInfo {
-        center: Point { lat, lng },
-        min: Point {
-            lat: lat - half_delta,
-            lng: lng - half_delta,
-        },
+        center,
+        min,
         zoom,
         scale,
     }
@@ -365,43 +361,5 @@ mod tests {
                 }
             ]
         );
-    }
-
-    #[test]
-    fn wide_map() {
-        let map_info = calculate_map(
-            800,
-            &Point {
-                lat: 33.989_316,
-                lng: -118.500_123,
-            },
-            &Point {
-                lat: 34.105_721,
-                lng: -118.246_575,
-            },
-        );
-        assert!((map_info.center.lat - 34.047_518_5).abs() < std::f64::EPSILON);
-        assert!((map_info.center.lng + 118.373_349).abs() < std::f64::EPSILON);
-        assert!((map_info.zoom - 11.116_994_223_947_59).abs() < std::f64::EPSILON);
-        assert!((map_info.scale - 3_155.221_102_118_793).abs() < std::f64::EPSILON);
-    }
-
-    #[test]
-    fn tall_map() {
-        let map_info = calculate_map(
-            800,
-            &Point {
-                lat: 33.979_119,
-                lng: -118.497_911,
-            },
-            &Point {
-                lat: 34.016_201,
-                lng: -118.462_638,
-            },
-        );
-        assert!((map_info.center.lat - 33.997_659_999_999_996).abs() < std::f64::EPSILON);
-        assert!((map_info.center.lng + 118.480_274_500_000_01).abs() < std::f64::EPSILON);
-        assert!((map_info.zoom - 13.620_010_920_097_176).abs() < std::f64::EPSILON);
-        assert!((map_info.scale - 21_573.809_395_390_985).abs() < std::f64::EPSILON);
     }
 }

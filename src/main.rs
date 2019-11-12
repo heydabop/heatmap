@@ -52,10 +52,6 @@ fn main() {
             lng: max_lng,
         },
     );
-    println!(
-        "{}, {} zoom: {}",
-        map_info.center.lat, map_info.center.lng, map_info.zoom
-    );
 
     let mapbox_response = reqwest::get(&format!("https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/{},{},{}/{3}x{3}?access_token={4}", map_info.center.lng, map_info.center.lat, map_info.zoom, pixels, access_token)).expect("Error GETing mapbox image");
     let decoder = png::PNGDecoder::new(mapbox_response).expect("Error decoding mapbox response");
@@ -66,15 +62,15 @@ fn main() {
     )
     .expect("Error reading RgbImage");
 
-    let pixels = f64::from(pixels - 1);
+    let pixels = f64::from(pixels - 2);
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     for pt in &trk_pts {
-        let x = ((pt.center.lng - map_info.min.lng) * map_info.scale)
-            .clamp(0.0, pixels)
+        let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng)
+            .clamp(1.0, pixels)
             .round() as u32;
-        let y = (pixels - (pt.center.lat - map_info.min.lat) * map_info.scale)
-            .clamp(0.0, pixels)
+        let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat)
+            .clamp(1.0, pixels)
             .round() as u32;
         map.put_pixel(x, y, Rgb([255, 0, 0]));
     }
