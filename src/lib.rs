@@ -39,6 +39,7 @@ impl fmt::Debug for TrkPt {
 
 pub struct MapInfo {
     pub center: Point,
+    pub min: Point,
     pub zoom: f64,
     pub scale: f64,
 }
@@ -178,7 +179,15 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
     let meters_per_pixel = map_meters / pixels;
     println!("meters per pixel: {}", meters_per_pixel);
 
-    let map_delta = (max.lat - min.lat).max(max.lng - min.lng);
+    let lat_delta = max.lat - min.lat;
+    let lng_delta = max.lng - min.lng;
+    println!("delta: {}, {}", lng_delta, lat_delta);
+    println!(
+        "delta/meters: {:e}, {:e}",
+        lng_delta / map_width_meters,
+        lat_delta / map_height_meters
+    );
+    let map_delta = (lat_delta).max(lng_delta);
     let scale = pixels / map_delta;
     println!("delta: {}, scale: {}", map_delta, scale);
 
@@ -186,8 +195,13 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
         / std::f64::consts::LN_2
         - 7.0;
 
+    let half_delta = map_delta / 2.0;
     MapInfo {
         center: Point { lat, lng },
+        min: Point {
+            lat: lat - half_delta,
+            lng: lng - half_delta,
+        },
         zoom,
         scale,
     }

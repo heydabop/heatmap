@@ -40,7 +40,7 @@ fn main() {
 
     println!("{}, {}\n{}, {}", max_lat, max_lng, min_lat, min_lng);
 
-    let pixels = 800;
+    let pixels = 1200;
     let map_info = heatmap::calculate_map(
         pixels,
         &heatmap::Point {
@@ -70,11 +70,11 @@ fn main() {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     for pt in &trk_pts {
-        let x = ((pt.center.lng - min_lng) * map_info.scale)
+        let x = ((pt.center.lng - map_info.min.lng) * map_info.scale)
             .clamp(0.0, pixels)
             .round() as u32;
         let y = (pixels
-            - ((pt.center.lat - min_lat) * map_info.scale)
+            - ((pt.center.lat - map_info.min.lat) * map_info.scale)
                 .clamp(0.0, pixels)
                 .round()) as u32;
         map.put_pixel(x, y, Rgb([255, 0, 0]));
