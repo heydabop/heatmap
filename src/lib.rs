@@ -8,7 +8,7 @@ pub struct TrkPt {
     pub time: Option<DateTime<Utc>>,
 }
 
-pub fn get_pts(gpx: &str) -> Vec<Box<TrkPt>> {
+pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
     let mut reader = Reader::from_str(&gpx);
     reader.trim_text(true);
 
@@ -17,8 +17,8 @@ pub fn get_pts(gpx: &str) -> Vec<Box<TrkPt>> {
     let mut in_trk = false;
     let mut in_time = false;
 
-    let mut curr_trk_pt: Option<Box<TrkPt>> = None;
-    let mut trk_pts: Vec<Box<TrkPt>> = Vec::new();
+    let mut curr_trk_pt: Option<&mut TrkPt> = None;
+    let mut trk_pts = Vec::new();
 
     loop {
         match reader.read_event(&mut buf) {
@@ -60,11 +60,13 @@ pub fn get_pts(gpx: &str) -> Vec<Box<TrkPt>> {
                         }
                     }
 
-                    curr_trk_pt = Some(Box::new(TrkPt {
+                    trk_pts.push(TrkPt {
                         lat,
                         lng,
                         time: None,
-                    }));
+                    });
+
+                    curr_trk_pt = trk_pts.last_mut();
                 }
                 b"time" => {
                     if curr_trk_pt.is_none() {
@@ -79,7 +81,7 @@ pub fn get_pts(gpx: &str) -> Vec<Box<TrkPt>> {
                 b"trk" => in_trk = false,
                 b"time" => in_time = false,
                 b"trkpt" => {
-                    trk_pts.push(curr_trk_pt.take().unwrap());
+                    curr_trk_pt = None;
                 }
                 _ => (),
             },
