@@ -2,7 +2,7 @@
 
 extern crate reqwest;
 
-use image::{png, ImageDecoder, Rgb, RgbImage};
+use image::{png, ImageDecoder, Rgb, RgbImage, Rgba, RgbaImage};
 use std::env;
 use std::fs;
 use std::process::{self, Command};
@@ -38,8 +38,6 @@ fn main() {
         }
     }
 
-    println!("{}, {}\n{}, {}", max_lat, max_lng, min_lat, min_lng);
-
     let pixels = 1200;
     let map_info = heatmap::calculate_map(
         pixels,
@@ -62,6 +60,8 @@ fn main() {
     )
     .expect("Error reading RgbImage");
 
+    let mut path_image = RgbaImage::new(pixels, pixels);
+
     let pixels = f64::from(pixels - 2);
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
@@ -72,7 +72,28 @@ fn main() {
         let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat)
             .clamp(1.0, pixels)
             .round() as u32;
-        map.put_pixel(x, y, Rgb([255, 0, 0]));
+        path_image.put_pixel(x, y, Rgba([255, 0, 0, 255]));
+        for (x1, y1) in vec![(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
+            let p = path_image.get_pixel_mut(x1, y1);
+            let Rgba(data) = *p;
+            *p = Rgba([255, data[1], data[2], (data[3] as u16 + 64).min(255) as u8]);
+        }
+    }
+
+    for (x, y, path_pixel) in path_image.enumerate_pixels() {
+        let Rgba(path_data) = *path_pixel;
+        if path_data[3] > 0 {
+            let map_pixel = map.get_pixel_mut(x, y);
+            let Rgb(map_data) = *map_pixel;
+            let alpha = f64::from(path_data[3]) / 255.0;
+            let mut new_pixel = [0; 3];
+            for i in 0..2 {
+                new_pixel[i] = (f64::from(path_data[i]) * alpha
+                    + f64::from(map_data[i]) * (1.0 - alpha))
+                    .round() as u8;
+            }
+            *map_pixel = Rgb(new_pixel);
+        }
     }
 
     let image_filename = format!("{}.png", filename);

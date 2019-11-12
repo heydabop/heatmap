@@ -207,11 +207,6 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
         lng: pixels / (max.lng - min.lng),
     };
 
-    println!(
-        "center: {:?}\nmin: {:?}\n zoom: {}\nscale:{:?}",
-        center, min, zoom, scale
-    );
-
     MapInfo {
         center,
         min,
