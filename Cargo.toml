@@ -8,4 +8,6 @@ edition = "2018"
 
 [dependencies]
 chrono = "0.4"
+image = "0.22.3"
 quick-xml = "0.17.0"
+reqwest = "0.9.22"

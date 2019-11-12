@@ -40,8 +40,10 @@ impl fmt::Debug for TrkPt {
 pub struct MapInfo {
     pub center: Point,
     pub zoom: f64,
+    pub scale: f64,
 }
 
+#[must_use]
 pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
     let mut reader = Reader::from_str(&gpx);
     reader.trim_text(true);
@@ -139,6 +141,7 @@ pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
     trk_pts
 }
 
+#[must_use]
 pub fn haversine(p1: &Point, p2: &Point) -> f64 {
     let r = 6371e3; // earth mean radius in meters
 
@@ -159,7 +162,10 @@ pub fn haversine(p1: &Point, p2: &Point) -> f64 {
     r * c
 }
 
+#[must_use]
 pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
+    let pixels = f64::from(pixels);
+
     let lat = min.lat + (max.lat - min.lat) / 2.0;
     let lng = min.lng + (max.lng - min.lng) / 2.0;
 
@@ -169,8 +175,12 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
 
     println!("meters: {}, {}", map_width_meters, map_height_meters);
 
-    let meters_per_pixel = map_meters / f64::from(pixels);
+    let meters_per_pixel = map_meters / pixels;
     println!("meters per pixel: {}", meters_per_pixel);
+
+    let map_delta = (max.lat - min.lat).max(max.lng - min.lng);
+    let scale = pixels / map_delta;
+    println!("delta: {}, scale: {}", map_delta, scale);
 
     let zoom = ((10_018_755.0 * lat.to_radians().cos()) / meters_per_pixel).ln()
         / std::f64::consts::LN_2
@@ -179,6 +189,7 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
     MapInfo {
         center: Point { lat, lng },
         zoom,
+        scale,
     }
 }
 
@@ -327,6 +338,7 @@ mod tests {
         assert!((map_info.center.lat - 34.047_518_5).abs() < std::f64::EPSILON);
         assert!((map_info.center.lng + 118.373_349).abs() < std::f64::EPSILON);
         assert!((map_info.zoom - 11.116_994_223_947_59).abs() < std::f64::EPSILON);
+        assert!((map_info.scale - 3_155.221_102_118_793).abs() < std::f64::EPSILON);
     }
 
     #[test]
@@ -345,5 +357,6 @@ mod tests {
         assert!((map_info.center.lat - 33.997_659_999_999_996).abs() < std::f64::EPSILON);
         assert!((map_info.center.lng + 118.480_274_500_000_01).abs() < std::f64::EPSILON);
         assert!((map_info.zoom - 13.620_010_920_097_176).abs() < std::f64::EPSILON);
+        assert!((map_info.scale - 21_573.809_395_390_985).abs() < std::f64::EPSILON);
     }
 }

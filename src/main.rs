@@ -1,14 +1,21 @@
+#![feature(clamp)]
+
+extern crate reqwest;
+
+use image::{png, ImageDecoder, Rgb, RgbImage};
 use std::env;
 use std::fs;
 use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: {} <gpx file>", args[0]);
+    if args.len() < 3 {
+        eprintln!("Usage: {} <mapbox token> <gpx file>", args[0]);
         process::exit(1);
     }
-    let file = fs::read_to_string(&args[1]).expect("Unable to read file");
+    let access_token = &args[1];
+    let filename = &args[2];
+    let file = fs::read_to_string(&filename).expect("Unable to read file");
 
     let trk_pts = heatmap::get_pts(&file);
 
@@ -33,8 +40,9 @@ fn main() {
 
     println!("{}, {}\n{}, {}", max_lat, max_lng, min_lat, min_lng);
 
+    let pixels = 800;
     let map_info = heatmap::calculate_map(
-        800,
+        pixels,
         &heatmap::Point {
             lat: min_lat,
             lng: min_lng,
@@ -44,9 +52,34 @@ fn main() {
             lng: max_lng,
         },
     );
-
     println!(
         "{}, {} zoom: {}",
         map_info.center.lat, map_info.center.lng, map_info.zoom
     );
+
+    let mapbox_response = reqwest::get(&format!("https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/{},{},{}/{3}x{3}?access_token={4}", map_info.center.lng, map_info.center.lat, map_info.zoom, pixels, access_token)).expect("Error GETing mapbox image");
+    let decoder = png::PNGDecoder::new(mapbox_response).expect("Error decoding mapbox response");
+    let mut map = RgbImage::from_raw(
+        pixels,
+        pixels,
+        decoder.read_image().expect("Erorr reading image into vec"),
+    )
+    .expect("Error reading RgbImage");
+
+    let pixels = f64::from(pixels - 1);
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    for pt in &trk_pts {
+        let x = ((pt.center.lng - min_lng) * map_info.scale)
+            .clamp(0.0, pixels)
+            .round() as u32;
+        let y = (pixels
+            - ((pt.center.lat - min_lat) * map_info.scale)
+                .clamp(0.0, pixels)
+                .round()) as u32;
+        map.put_pixel(x, y, Rgb([255, 0, 0]));
+    }
+
+    map.save(format!("{}.png", filename))
+        .expect("Error saving final png");
 }
