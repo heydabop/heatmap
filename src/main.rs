@@ -5,7 +5,7 @@ extern crate reqwest;
 use image::{png, ImageDecoder, Rgb, RgbImage};
 use std::env;
 use std::fs;
-use std::process;
+use std::process::{self, Command};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -80,6 +80,14 @@ fn main() {
         map.put_pixel(x, y, Rgb([255, 0, 0]));
     }
 
-    map.save(format!("{}.png", filename))
-        .expect("Error saving final png");
+    let image_filename = format!("{}.png", filename);
+    map.save(&image_filename).expect("Error saving final png");
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .args(&[&image_filename])
+            .output()
+            .unwrap_or_else(|e| panic!("Failed to open {}\n{}", image_filename, e));
+    }
 }
