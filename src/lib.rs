@@ -8,6 +8,7 @@ use quick_xml::Reader;
 use simple_error::{bail, SimpleError};
 use std::fmt;
 use std::fs;
+use std::path::PathBuf;
 
 const R: f64 = 6371e3; // earth mean radius in meters
 
@@ -176,7 +177,7 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
 #[must_use]
 /// Iterates over entires in directory and tries to parse them as gpx files if they're files.
 /// Returns a vector of vectors (one per processed file) of `TrkPts` from the directory contents
-pub fn get_pts_dir(directory: &str) -> Vec<Vec<TrkPt>> {
+pub fn get_pts_dir(directory: &PathBuf) -> Vec<Vec<TrkPt>> {
     let mut trk_pts = Vec::new();
 
     for entry in fs::read_dir(directory).expect("Error reading directory") {
@@ -285,11 +286,12 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
 }
 
 #[must_use]
-/// Overlays dots from `trk_pts` on `map_image` using scaling information in `map_info`.
+/// Overlays dots with color `track_color` from `trk_pts` on `map_image` using scaling information in `map_info`.
 pub fn overlay_image(
     mut map_image: RgbImage,
     map_info: &MapInfo,
     trk_pts: &[Vec<TrkPt>],
+    track_color: Rgb<u8>,
 ) -> RgbImage {
     let trks = trk_pts.len();
     let width = map_image.width();
@@ -336,7 +338,6 @@ pub fn overlay_image(
         for (y, &intensity) in row.iter().enumerate() {
             if intensity > 0.0 {
                 let alpha = intensity.min(1.0);
-                let track_color = [0, 0, 255]; // color that pixel with alpha 1 will be
 
                 let map_pixel = map_image.get_pixel_mut(x as u32, y as u32);
                 let Rgb(map_data) = *map_pixel;

@@ -1,19 +1,44 @@
 extern crate reqwest;
 
-use image::{png, ImageDecoder, RgbImage};
-use std::env;
+use image::{png, ImageDecoder, Rgb, RgbImage};
+use std::path::PathBuf;
 use std::process::{self, Command};
+use structopt::StructOpt;
+
+#[derive(StructOpt)]
+#[structopt(name = "heatmap")]
+struct Opt {
+    /// MapBox API Token
+    #[structopt(short = "t", long = "token")]
+    access_token: String,
+
+    /// RGB Color used for heatmap
+    #[structopt(short, long, default_value = "0,0,255")]
+    color: String,
+
+    /// Directory containing .gpx files
+    #[structopt(name = "DIR", parse(from_os_str))]
+    directory: PathBuf,
+}
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 3 {
-        eprintln!("Usage: {} <mapbox token> <gpx dir>", args[0]);
+    let opt = Opt::from_args();
+
+    let color: Vec<u8> = opt
+        .color
+        .split(',')
+        .map(|s| {
+            s.trim()
+                .parse()
+                .expect("color must be in form of r,g,b (ex: 0,0,255)")
+        })
+        .collect();
+    if color.len() != 3 {
+        eprintln!("color must be in form of r,g,b (ex: 0,0,255)");
         process::exit(1);
     }
-    let access_token = &args[1];
-    let directory = &args[2];
 
-    let trk_pts = heatmap::get_pts_dir(&directory);
+    let trk_pts = heatmap::get_pts_dir(&opt.directory);
 
     if trk_pts.is_empty() {
         eprintln!("No valid files loaded");
@@ -41,7 +66,7 @@ fn main() {
     let pixels = 1280;
     let map_info = heatmap::calculate_map(pixels, &min, &max);
     // get mapbox static API image based on center and zoom level from map_info
-    let mapbox_response = reqwest::get(&format!("https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/{},{},{}/{3}x{3}?access_token={4}", map_info.center.lng, map_info.center.lat, map_info.zoom, pixels, access_token)).expect("Error GETing mapbox image");
+    let mapbox_response = reqwest::get(&format!("https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/{},{},{}/{3}x{3}?access_token={4}", map_info.center.lng, map_info.center.lat, map_info.zoom, pixels, opt.access_token)).expect("Error GETing mapbox image");
     if !mapbox_response.status().is_success() {
         panic!(
             "Non success response code {} from mapbox",
@@ -58,7 +83,12 @@ fn main() {
     .expect("Error reading RgbImage");
 
     // overlay path from trk_pts onto map image
-    let heatmap_image = heatmap::overlay_image(map_image, &map_info, &trk_pts);
+    let heatmap_image = heatmap::overlay_image(
+        map_image,
+        &map_info,
+        &trk_pts,
+        Rgb([color[0], color[1], color[2]]),
+    );
 
     let image_filename = "heatmap.png";
     heatmap_image
