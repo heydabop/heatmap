@@ -100,7 +100,15 @@ fn main() {
         opt.ratio,
     );
 
-    let image_filename = "heatmap.png";
+    let image_filename = format!(
+        "heatmap_{}_{}.png",
+        opt.directory
+            .file_name()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or_default(),
+        opt.ratio
+    );
     heatmap_image
         .save(&image_filename)
         .expect("Error saving final png");
