@@ -1,7 +1,9 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use simple_error::{bail, SimpleError};
 use std::fmt;
+use std::fs;
 
 const R: f64 = 6371e3; // earth mean radius in meters
 
@@ -47,7 +49,7 @@ pub struct MapInfo {
 }
 
 #[must_use]
-pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
+pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
     let mut reader = Reader::from_str(&gpx);
     reader.trim_text(true);
 
@@ -59,16 +61,31 @@ pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
     let mut curr_trk_pt: Option<&mut TrkPt> = None;
     let mut trk_pts = Vec::new();
 
+    match reader.read_event(&mut buf) {
+        Ok(Event::Decl(_)) => (),
+        Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
+        _ => bail!("Expected <?xml>"),
+    }
+
+    match reader.read_event(&mut buf) {
+        Ok(Event::Start(ref e)) => match e.name() {
+            b"gpx" => (),
+            _ => bail!("Expected <gpx>, got {:?}", e.name()),
+        },
+        Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
+        _ => bail!("Expected <gpx>"),
+    }
+
     loop {
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => match e.name() {
                 b"trk" => in_trk = true,
                 b"trkpt" => {
                     if !in_trk {
-                        panic!("trkpt out of trk");
+                        bail!("trkpt out of trk");
                     }
                     if curr_trk_pt.is_some() {
-                        panic!("nested trkpt");
+                        bail!("nested trkpt");
                     }
 
                     let mut lng = 0.0;
@@ -134,14 +151,44 @@ pub fn get_pts(gpx: &str) -> Vec<TrkPt> {
                 }
             }
             Ok(Event::Eof) => break,
-            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+            Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
 
         buf.clear();
     }
 
-    trk_pts
+    Ok(trk_pts)
+}
+
+#[must_use]
+pub fn get_pts_dir(directory: &str) -> (Vec<TrkPt>, u16) {
+    let mut trk_pts = Vec::new();
+    let mut count = 0;
+
+    for entry in fs::read_dir(directory).expect("Error reading directory") {
+        match entry {
+            Ok(file) => match file.file_type() {
+                Ok(f_type) => {
+                    if !f_type.is_file() {
+                        continue;
+                    }
+                    let contents = fs::read_to_string(file.path()).expect("Unable to read file");
+                    match get_pts(&contents) {
+                        Ok(mut pts) => {
+                            trk_pts.append(&mut pts);
+                            count += 1;
+                        }
+                        Err(e) => eprintln!("Error reading {:?}\n{}", file.path(), e),
+                    }
+                }
+                Err(e) => eprintln!("Error getting file type\n{}", e),
+            },
+            Err(e) => eprintln!("Error reading directory entry\n{}", e),
+        }
+    }
+
+    (trk_pts, count)
 }
 
 #[must_use]

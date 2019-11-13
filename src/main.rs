@@ -4,52 +4,49 @@ extern crate reqwest;
 
 use image::{png, ImageDecoder, Rgb, RgbImage, Rgba, RgbaImage};
 use std::env;
-use std::fs;
 use std::process::{self, Command};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
-        eprintln!("Usage: {} <mapbox token> <gpx file>", args[0]);
+        eprintln!("Usage: {} <mapbox token> <gpx dir>", args[0]);
         process::exit(1);
     }
     let access_token = &args[1];
-    let filename = &args[2];
-    let file = fs::read_to_string(&filename).expect("Unable to read file");
+    let directory = &args[2];
 
-    let trk_pts = heatmap::get_pts(&file);
+    let (trk_pts, count) = heatmap::get_pts_dir(&directory);
 
-    let mut max_lat = -90.0;
-    let mut min_lat = 90.0;
-    let mut max_lng = -180.0;
-    let mut min_lng = 180.0;
+    if count == 0 {
+        eprintln!("No valid files loaded");
+        process::exit(2);
+    }
+
+    let mut min = heatmap::Point {
+        lat: 90.0,
+        lng: 180.0,
+    };
+    let mut max = heatmap::Point {
+        lat: -90.0,
+        lng: -180.0,
+    };
     for pt in &trk_pts {
-        if pt.center.lat > max_lat {
-            max_lat = pt.center.lat;
+        if pt.center.lat > max.lat {
+            max.lat = pt.center.lat;
         }
-        if pt.center.lat < min_lat {
-            min_lat = pt.center.lat;
+        if pt.center.lat < min.lat {
+            min.lat = pt.center.lat;
         }
-        if pt.center.lng > max_lng {
-            max_lng = pt.center.lng;
+        if pt.center.lng > max.lng {
+            max.lng = pt.center.lng;
         }
-        if pt.center.lng < min_lng {
-            min_lng = pt.center.lng;
+        if pt.center.lng < min.lng {
+            min.lng = pt.center.lng;
         }
     }
 
     let pixels = 1280;
-    let map_info = heatmap::calculate_map(
-        pixels,
-        &heatmap::Point {
-            lat: min_lat,
-            lng: min_lng,
-        },
-        &heatmap::Point {
-            lat: max_lat,
-            lng: max_lng,
-        },
-    );
+    let map_info = heatmap::calculate_map(pixels, &min, &max);
 
     let mapbox_response = reqwest::get(&format!("https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/{},{},{}/{3}x{3}?access_token={4}", map_info.center.lng, map_info.center.lat, map_info.zoom, pixels, access_token)).expect("Error GETing mapbox image");
     if !mapbox_response.status().is_success() {
@@ -59,7 +56,7 @@ fn main() {
         );
     }
     let decoder = png::PNGDecoder::new(mapbox_response).expect("Error decoding mapbox response");
-    let mut map = RgbImage::from_raw(
+    let mut map_image = RgbImage::from_raw(
         pixels,
         pixels,
         decoder.read_image().expect("Erorr reading image into vec"),
@@ -86,7 +83,7 @@ fn main() {
                 255,
                 data[1],
                 data[2],
-                (u16::from(data[3]) + 64).min(255) as u8,
+                (u16::from(data[3]) + (64 / count)).min(255) as u8,
             ]);
         }
     }
@@ -96,7 +93,7 @@ fn main() {
     for (x, y, path_pixel) in path_image.enumerate_pixels() {
         let Rgba(path_data) = *path_pixel;
         if path_data[3] > 0 {
-            let map_pixel = map.get_pixel_mut(x, y);
+            let map_pixel = map_image.get_pixel_mut(x, y);
             let Rgb(map_data) = *map_pixel;
             let alpha = f64::from(path_data[3]) / 255.0;
             let mut new_pixel = [0; 3];
@@ -109,8 +106,10 @@ fn main() {
         }
     }
 
-    let image_filename = format!("{}.png", filename);
-    map.save(&image_filename).expect("Error saving final png");
+    let image_filename = "heatmap.png";
+    map_image
+        .save(&image_filename)
+        .expect("Error saving final png");
 
     #[cfg(target_os = "macos")]
     {
