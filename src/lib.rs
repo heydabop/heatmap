@@ -325,6 +325,22 @@ pub fn overlay_image(
                     (usize::from(data[3]) + (64 / trks)).min(255) as u8, // alpha based on "4 neighbors" from above normalized for number of trks
                 ]);
             }
+            for (x1, y1) in &[
+                (x + 1, y + 1),
+                (x - 1, y + 1),
+                (x + 1, y - 1),
+                (x - 1, y - 1),
+            ] {
+                // diaognal pixels get more transparent blue, based on number of tracks. given 1 track it would take a pixel being a neighbor 8 times to be opaque
+                let p = path_image.get_pixel_mut(*x1, *y1);
+                let Rgba(data) = *p;
+                *p = Rgba([
+                    data[0],
+                    data[1],
+                    255,                                                 // pure blue color
+                    (usize::from(data[3]) + (32 / trks)).min(255) as u8, // alpha based on "8 neighbors" from above normalized for number of trks
+                ]);
+            }
         }
     }
 
