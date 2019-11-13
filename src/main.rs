@@ -19,6 +19,10 @@ struct Opt {
     /// Directory containing .gpx files
     #[structopt(name = "DIR", parse(from_os_str))]
     directory: PathBuf,
+
+    /// Ratio of tracks a pixel has to be part of to become opaque (higher values will result in more transparent tracks)
+    #[structopt(short, long, default_value = "0.25")]
+    ratio: f64,
 }
 
 fn main() {
@@ -35,6 +39,11 @@ fn main() {
         .collect();
     if color.len() != 3 {
         eprintln!("color must be in form of r,g,b (ex: 0,0,255)");
+        process::exit(1);
+    }
+
+    if opt.ratio < 0.0 || opt.ratio > 1.0 {
+        eprintln!("ratio must be between 0 and 1");
         process::exit(1);
     }
 
@@ -88,6 +97,7 @@ fn main() {
         &map_info,
         &trk_pts,
         Rgb([color[0], color[1], color[2]]),
+        opt.ratio,
     );
 
     let image_filename = "heatmap.png";

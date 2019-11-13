@@ -286,12 +286,14 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
 }
 
 #[must_use]
-/// Overlays dots with color `track_color` from `trk_pts` on `map_image` using scaling information in `map_info`.
+/// Overlays dots with color `track_color` from `trk_pts` on `map_image` using scaling information in `map_info`
+/// `ratio` (between 0 and 1) is the ratio of tracks a pixel must be part of before it's opaque (higher values = more transparent tracks)
 pub fn overlay_image(
     mut map_image: RgbImage,
     map_info: &MapInfo,
     trk_pts: &[Vec<TrkPt>],
     track_color: Rgb<u8>,
+    ratio: f64,
 ) -> RgbImage {
     let trks = trk_pts.len();
     let width = map_image.width();
@@ -299,10 +301,10 @@ pub fn overlay_image(
 
     // how frequently a pixel is part of a track, from 0 to 1 (capped during compositing)
     let mut intensities = vec![vec![0.0; width as usize]; height as usize];
-    let single_step = 4.0
-        / f64::value_from(trks).expect(
+    let single_step = 1.0 / (ratio
+        * f64::value_from(trks).expect(
             "trks is too large to be represented as an f64; giving up on gradual heatmap stepping",
-        ); // after 25% of tracks a pixel will be 1
+        ));
     let quarter_step = single_step / 4.0; // smaller step for pixels that are neighbors of a track
 
     // used to clamp dots (and neighbors) from going beyond image bounds
