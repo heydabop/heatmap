@@ -309,9 +309,11 @@ pub fn overlay_image(
             let Rgb(map_data) = *map_pixel;
             let alpha = f64::from(path_data[3]) / 255.0;
             let mut new_pixel = [0; 3];
-            for i in 0..2 {
-                new_pixel[i] = (f64::from(path_data[i]) * alpha
-                    + f64::from(map_data[i]) * (1.0 - alpha))
+            for i in 0..3 {
+                let color_a = f64::from(path_data[i]);
+                let color_b = f64::from(map_data[i]);
+                new_pixel[i] = (color_a * alpha + color_b * (1.0 - alpha))
+                    .clamp(0.0, 255.0)
                     .round() as u8;
             }
             *map_pixel = Rgb(new_pixel);
