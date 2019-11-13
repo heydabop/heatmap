@@ -127,7 +127,6 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
                 }
                 b"time" => {
                     if curr_trk_pt.is_none() {
-                        eprintln!("time outside of trkpt");
                         continue;
                     }
                     in_time = true;
@@ -287,14 +286,14 @@ pub fn overlay_image(
         let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat)
             .clamp(1.0, max_y)
             .round() as u32;
-        path_image.put_pixel(x, y, Rgba([255, 0, 0, 255]));
+        path_image.put_pixel(x, y, Rgba([0, 0, 255, 255]));
         for (x1, y1) in &[(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
             let p = path_image.get_pixel_mut(*x1, *y1);
             let Rgba(data) = *p;
             *p = Rgba([
-                255,
+                data[0],
                 data[1],
-                data[2],
+                255,
                 (u16::from(data[3]) + (64 / trks)).min(255) as u8,
             ]);
         }
