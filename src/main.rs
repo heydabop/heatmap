@@ -20,6 +20,7 @@ fn main() {
         process::exit(2);
     }
 
+    // calculate min and max points
     let mut min = heatmap::Point {
         lat: 90.0,
         lng: 180.0,
@@ -37,7 +38,7 @@ fn main() {
 
     let pixels = 1280;
     let map_info = heatmap::calculate_map(pixels, &min, &max);
-
+    // get mapbox static API image based on center and zoom level from map_info
     let mapbox_response = reqwest::get(&format!("https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/{},{},{}/{3}x{3}?access_token={4}", map_info.center.lng, map_info.center.lat, map_info.zoom, pixels, access_token)).expect("Error GETing mapbox image");
     if !mapbox_response.status().is_success() {
         panic!(
@@ -45,6 +46,7 @@ fn main() {
             mapbox_response.status()
         );
     }
+    // load mapbox response into image buffer
     let decoder = png::PNGDecoder::new(mapbox_response).expect("Error decoding mapbox response");
     let map_image = RgbImage::from_raw(
         pixels,
@@ -53,6 +55,7 @@ fn main() {
     )
     .expect("Error reading RgbImage");
 
+    // overlay path from trk_pts onto map image
     let heatmap_image = heatmap::overlay_image(map_image, &map_info, &trk_pts, count);
 
     let image_filename = "heatmap.png";
@@ -62,6 +65,7 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
+        // open image in preview
         Command::new("open")
             .args(&[&image_filename])
             .output()

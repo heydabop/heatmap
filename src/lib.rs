@@ -51,24 +51,27 @@ pub struct MapInfo {
     pub scale: Point,
 }
 
+/// Parses trkpt's from gpx file into vector
 pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
     let mut reader = Reader::from_str(&gpx);
     reader.trim_text(true);
 
     let mut buf = Vec::new();
 
-    let mut in_trk = false;
-    let mut in_time = false;
+    let mut in_trk = false; // true if we're between a <trk> and </trk> tag (the bulk of the gpx file)
+    let mut in_time = false; // true if we're in a <time> tag (the next event should be the Text of the tag))
 
-    let mut curr_trk_pt: Option<&mut TrkPt> = None;
+    let mut curr_trk_pt: Option<&mut TrkPt> = None; // refernece to the TrkPt current being processed (stored at the tail of the trk_pts vector), this is set to None when we hit </trkpt>
     let mut trk_pts = Vec::new();
 
+    // check for <?xml> declaration
     match reader.read_event(&mut buf) {
         Ok(Event::Decl(_)) => (),
         Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
         _ => bail!("Expected <?xml>"),
     }
 
+    // check for <gpx> opening tag
     match reader.read_event(&mut buf) {
         Ok(Event::Start(ref e)) => match e.name() {
             b"gpx" => (),
@@ -81,17 +84,20 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
     loop {
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => match e.name() {
-                b"trk" => in_trk = true,
+                b"trk" => in_trk = true, // mark that we're within <trk> </trk>, which we will be for most of the file
                 b"trkpt" => {
                     if !in_trk {
+                        // we could ignore a <trkpt> outside of <trk> but this seems malformed so we error out
                         bail!("trkpt out of trk");
                     }
                     if curr_trk_pt.is_some() {
+                        // same here, seems malformed so we error out
                         bail!("nested trkpt");
                     }
 
                     let mut lng = 0.0;
                     let mut lat = 0.0;
+                    // the <trkpt> tag has "lat" and "lon" attributes that we read and parse into floats
                     for attr in e.attributes().map(Result::unwrap) {
                         match attr.key {
                             b"lat" => {
@@ -118,18 +124,18 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
                         }
                     }
 
+                    // push this half finished TrkPt and hold a reference to it
                     trk_pts.push(TrkPt {
                         center: Point { lat, lng },
                         time: None,
                     });
-
                     curr_trk_pt = trk_pts.last_mut();
                 }
                 b"time" => {
                     if curr_trk_pt.is_none() {
                         continue;
                     }
-                    in_time = true;
+                    in_time = true; // mark that we're in a <time> tag and the next Text event is time for our curr_trk_pt
                 }
                 _ => (),
             },
@@ -137,13 +143,17 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
                 b"trk" => in_trk = false,
                 b"time" => in_time = false,
                 b"trkpt" => {
-                    curr_trk_pt = None;
+                    curr_trk_pt = None; // done with this TrkPt
                 }
                 _ => (),
             },
             Ok(Event::Text(e)) => {
                 if in_time {
-                    curr_trk_pt.as_mut().unwrap().time = Some(
+                    // if we're in <time> read and parse it for the curr_trk_pt
+                    curr_trk_pt
+                        .as_mut()
+                        .expect("curr_trk_pt is none when in_time is true")
+                        .time = Some(
                         e.unescape_and_decode(&reader)
                             .unwrap()
                             .parse::<DateTime<Utc>>()
@@ -163,6 +173,8 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
 }
 
 #[must_use]
+/// Iterates over entires in directory and tries to parse them as gpx files if they're files.
+/// Returns a single vector of all `TrkPts` across the files, and a count of how many files were processed
 pub fn get_pts_dir(directory: &str) -> (Vec<TrkPt>, u16) {
     let mut trk_pts = Vec::new();
     let mut count = 0;
@@ -172,9 +184,11 @@ pub fn get_pts_dir(directory: &str) -> (Vec<TrkPt>, u16) {
             Ok(file) => match file.file_type() {
                 Ok(f_type) => {
                     if !f_type.is_file() {
+                        // only processing files, no nesting or symlinking
                         continue;
                     }
                     let contents = fs::read_to_string(file.path()).expect("Unable to read file");
+                    // parse file into TrkPts and add them to existing vector
                     match get_pts(&contents) {
                         Ok(mut pts) => {
                             trk_pts.append(&mut pts);
@@ -193,6 +207,7 @@ pub fn get_pts_dir(directory: &str) -> (Vec<TrkPt>, u16) {
 }
 
 #[must_use]
+/// Computes great-circle distance between p1 and p2
 pub fn haversine(p1: &Point, p2: &Point) -> f64 {
     let lat_rad_1 = p1.lat.to_radians();
     let lat_rad_2 = p2.lat.to_radians();
@@ -212,6 +227,7 @@ pub fn haversine(p1: &Point, p2: &Point) -> f64 {
 }
 
 #[must_use]
+/// Finds destination point along great-circle path (in meters) from start point p towards bearing
 pub fn destination(p: &Point, bearing: f64, distance: f64) -> Point {
     let ang_dist = distance / R;
 
@@ -229,27 +245,35 @@ pub fn destination(p: &Point, bearing: f64, distance: f64) -> Point {
 }
 
 #[must_use]
+#[allow(clippy::doc_markdown)]
+/// Based on image size and lat/lng ranges, calculates the center and MapBox zoom level of a map, and the new minimum lat/lng and scale for linear transformation from lat/lng to pixel
 pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
     let pixels = f64::from(pixels);
 
+    // simple centers
     let lat = min.lat + (max.lat - min.lat) / 2.0;
     let lng = min.lng + (max.lng - min.lng) / 2.0;
 
+    // width and height of map in meters at the center (this will be inaccurate towrads map edges if map is too big)
     let map_width_meters = haversine(&Point { lat, lng: min.lng }, &Point { lat, lng: max.lng });
     let map_height_meters = haversine(&Point { lat: min.lat, lng }, &Point { lat: max.lat, lng });
+    // take the great of the two and use it to calculate zoom level
     let map_meters = map_height_meters.max(map_width_meters);
 
-    let meters_per_pixel = (map_meters / pixels) * 1.1;
+    let meters_per_pixel = (map_meters / pixels) * 1.1; //add padding so min/max aren't right against edge of map
 
+    // calculate MapBox zoom level at center latitude (this will also be inaccuate for larger maps)
     let zoom = ((10_018_755.0 * lat.to_radians().cos()) / meters_per_pixel).ln()
         / std::f64::consts::LN_2
         - 7.0;
 
     let center = Point { lat, lng };
 
+    // calculate new min/max points on map by finding destination point from center to corners
     let diagonal = ((meters_per_pixel * pixels / 2.0).powi(2) * 2.0).sqrt();
     let min = destination(&center, 315.0, diagonal);
     let max = destination(&center, 135.0, diagonal);
+    // calculate scale for linear transformations of lat/lng to pixel
     let scale = Point {
         lat: pixels / (max.lat - min.lat),
         lng: pixels / (max.lng - min.lng),
@@ -264,6 +288,8 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
 }
 
 #[must_use]
+/// Overlays dots from `trk_pts` on `map_image` using scaling information in `map_info`.
+/// trks is number of individual trks that were used to make `trk_pts` and controls transparency of points (a single point is more transparent as there are more trks)
 pub fn overlay_image(
     mut map_image: RgbImage,
     map_info: &MapInfo,
@@ -273,41 +299,51 @@ pub fn overlay_image(
     let width = map_image.width();
     let height = map_image.height();
 
+    // make new blank image to draw path in (so we can sum up alpha values)
     let mut path_image = RgbaImage::new(width, height);
 
-    let max_x = f64::from(width - 2);
-    let max_y = f64::from(width - 2);
+    // used to clamp dots (and neighbors) from going beyond image bounds
+    let max_x = width - 2;
+    let max_y = height - 2;
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     for pt in trk_pts {
-        let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng)
-            .clamp(1.0, max_x)
-            .round() as u32;
-        let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat)
-            .clamp(1.0, max_y)
-            .round() as u32;
-        path_image.put_pixel(x, y, Rgba([0, 0, 255, 255]));
+        // linear transformations
+        let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as u32;
+        let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as u32;
+        if x < 1 || x > max_x || y < 1 || y > max_y {
+            // maybe a problem with my code, maybe a problem with the gpx?
+            eprintln!("Pixel {}, {} out of range", x, y);
+            continue;
+        }
+
+        path_image.put_pixel(x, y, Rgba([0, 0, 255, 255])); // mark pixel as pure blue
         for (x1, y1) in &[(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
+            // surrounding pixels get transparent blue, based on number of tracks. given 1 track it would take a pixel being a neighbor 4 times to be opaque
             let p = path_image.get_pixel_mut(*x1, *y1);
             let Rgba(data) = *p;
             *p = Rgba([
                 data[0],
                 data[1],
-                255,
-                (u16::from(data[3]) + (64 / trks)).min(255) as u8,
+                255,                                               // pure blue color
+                (u16::from(data[3]) + (64 / trks)).min(255) as u8, // alpha based on "4 neighbors" from above normalized for number of trks
             ]);
         }
     }
 
+    // composit path_image onto map_image
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     for (x, y, path_pixel) in path_image.enumerate_pixels() {
         let Rgba(path_data) = *path_pixel;
+        // if pixel isn't blank (0 alpha)
         if path_data[3] > 0 {
             let map_pixel = map_image.get_pixel_mut(x, y);
             let Rgb(map_data) = *map_pixel;
-            let alpha = f64::from(path_data[3]) / 255.0;
+            let alpha = f64::from(path_data[3]) / 255.0; // transform alpha from (0, 255) to (0, 1)
             let mut new_pixel = [0; 3];
+
+            // composit each color channel
             for i in 0..3 {
                 let color_a = f64::from(path_data[i]);
                 let color_b = f64::from(map_data[i]);
@@ -315,6 +351,8 @@ pub fn overlay_image(
                     .clamp(0.0, 255.0)
                     .round() as u8;
             }
+
+            // save new composited pixel to map_image
             *map_pixel = Rgb(new_pixel);
         }
     }
