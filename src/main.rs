@@ -13,9 +13,9 @@ fn main() {
     let access_token = &args[1];
     let directory = &args[2];
 
-    let (trk_pts, count) = heatmap::get_pts_dir(&directory);
+    let trk_pts = heatmap::get_pts_dir(&directory);
 
-    if count == 0 {
+    if trk_pts.is_empty() {
         eprintln!("No valid files loaded");
         process::exit(2);
     }
@@ -29,11 +29,13 @@ fn main() {
         lat: -90.0,
         lng: -180.0,
     };
-    for pt in &trk_pts {
-        max.lat = max.lat.max(pt.center.lat);
-        min.lat = min.lat.min(pt.center.lat);
-        max.lng = max.lng.max(pt.center.lng);
-        min.lng = min.lng.min(pt.center.lng);
+    for v in &trk_pts {
+        for pt in v {
+            max.lat = max.lat.max(pt.center.lat);
+            min.lat = min.lat.min(pt.center.lat);
+            max.lng = max.lng.max(pt.center.lng);
+            min.lng = min.lng.min(pt.center.lng);
+        }
     }
 
     let pixels = 1280;
@@ -56,7 +58,7 @@ fn main() {
     .expect("Error reading RgbImage");
 
     // overlay path from trk_pts onto map image
-    let heatmap_image = heatmap::overlay_image(map_image, &map_info, &trk_pts, count);
+    let heatmap_image = heatmap::overlay_image(map_image, &map_info, &trk_pts);
 
     let image_filename = "heatmap.png";
     heatmap_image

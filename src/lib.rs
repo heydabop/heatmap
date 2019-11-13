@@ -174,10 +174,9 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
 
 #[must_use]
 /// Iterates over entires in directory and tries to parse them as gpx files if they're files.
-/// Returns a single vector of all `TrkPts` across the files, and a count of how many files were processed
-pub fn get_pts_dir(directory: &str) -> (Vec<TrkPt>, u16) {
+/// Returns a vector of vectors (one per processed file) of `TrkPts` from the directory contents
+pub fn get_pts_dir(directory: &str) -> Vec<Vec<TrkPt>> {
     let mut trk_pts = Vec::new();
-    let mut count = 0;
 
     for entry in fs::read_dir(directory).expect("Error reading directory") {
         match entry {
@@ -190,10 +189,7 @@ pub fn get_pts_dir(directory: &str) -> (Vec<TrkPt>, u16) {
                     let contents = fs::read_to_string(file.path()).expect("Unable to read file");
                     // parse file into TrkPts and add them to existing vector
                     match get_pts(&contents) {
-                        Ok(mut pts) => {
-                            trk_pts.append(&mut pts);
-                            count += 1;
-                        }
+                        Ok(pts) => trk_pts.push(pts),
                         Err(e) => eprintln!("Error reading {:?}\n{}", file.path(), e),
                     }
                 }
@@ -203,7 +199,7 @@ pub fn get_pts_dir(directory: &str) -> (Vec<TrkPt>, u16) {
         }
     }
 
-    (trk_pts, count)
+    trk_pts
 }
 
 #[must_use]
@@ -289,13 +285,12 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
 
 #[must_use]
 /// Overlays dots from `trk_pts` on `map_image` using scaling information in `map_info`.
-/// trks is number of individual trks that were used to make `trk_pts` and controls transparency of points (a single point is more transparent as there are more trks)
 pub fn overlay_image(
     mut map_image: RgbImage,
     map_info: &MapInfo,
-    trk_pts: &[TrkPt],
-    trks: u16,
+    trk_pts: &[Vec<TrkPt>],
 ) -> RgbImage {
+    let trks = trk_pts.len();
     let width = map_image.width();
     let height = map_image.height();
 
@@ -307,27 +302,29 @@ pub fn overlay_image(
     let max_y = height - 2;
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
-    for pt in trk_pts {
-        // linear transformations
-        let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as u32;
-        let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as u32;
-        if x < 1 || x > max_x || y < 1 || y > max_y {
-            // maybe a problem with my code, maybe a problem with the gpx?
-            eprintln!("Pixel {}, {} out of range", x, y);
-            continue;
-        }
+    for v in trk_pts {
+        for pt in v {
+            // linear transformations
+            let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as u32;
+            let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as u32;
+            if x < 1 || x > max_x || y < 1 || y > max_y {
+                // maybe a problem with my code, maybe a problem with the gpx?
+                eprintln!("Pixel {}, {} out of range", x, y);
+                continue;
+            }
 
-        path_image.put_pixel(x, y, Rgba([0, 0, 255, 255])); // mark pixel as pure blue
-        for (x1, y1) in &[(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
-            // surrounding pixels get transparent blue, based on number of tracks. given 1 track it would take a pixel being a neighbor 4 times to be opaque
-            let p = path_image.get_pixel_mut(*x1, *y1);
-            let Rgba(data) = *p;
-            *p = Rgba([
-                data[0],
-                data[1],
-                255,                                               // pure blue color
-                (u16::from(data[3]) + (64 / trks)).min(255) as u8, // alpha based on "4 neighbors" from above normalized for number of trks
-            ]);
+            path_image.put_pixel(x, y, Rgba([0, 0, 255, 255])); // mark pixel as pure blue
+            for (x1, y1) in &[(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
+                // surrounding pixels get transparent blue, based on number of tracks. given 1 track it would take a pixel being a neighbor 4 times to be opaque
+                let p = path_image.get_pixel_mut(*x1, *y1);
+                let Rgba(data) = *p;
+                *p = Rgba([
+                    data[0],
+                    data[1],
+                    255,                                                 // pure blue color
+                    (usize::from(data[3]) + (64 / trks)).min(255) as u8, // alpha based on "4 neighbors" from above normalized for number of trks
+                ]);
+            }
         }
     }
 
