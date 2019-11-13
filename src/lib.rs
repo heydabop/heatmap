@@ -1,4 +1,7 @@
+#![feature(clamp)]
+
 use chrono::{DateTime, NaiveDateTime, Utc};
+use image::{Rgb, RgbImage, Rgba, RgbaImage};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use simple_error::{bail, SimpleError};
@@ -48,7 +51,6 @@ pub struct MapInfo {
     pub scale: Point,
 }
 
-#[must_use]
 pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
     let mut reader = Reader::from_str(&gpx);
     reader.trim_text(true);
@@ -262,6 +264,63 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
     }
 }
 
+#[must_use]
+pub fn overlay_image(
+    mut map_image: RgbImage,
+    map_info: &MapInfo,
+    trk_pts: &[TrkPt],
+    trks: u16,
+) -> RgbImage {
+    let width = map_image.width();
+    let height = map_image.height();
+
+    let mut path_image = RgbaImage::new(width, height);
+
+    let max_x = f64::from(width - 2);
+    let max_y = f64::from(width - 2);
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    for pt in trk_pts {
+        let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng)
+            .clamp(1.0, max_x)
+            .round() as u32;
+        let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat)
+            .clamp(1.0, max_y)
+            .round() as u32;
+        path_image.put_pixel(x, y, Rgba([255, 0, 0, 255]));
+        for (x1, y1) in &[(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
+            let p = path_image.get_pixel_mut(*x1, *y1);
+            let Rgba(data) = *p;
+            *p = Rgba([
+                255,
+                data[1],
+                data[2],
+                (u16::from(data[3]) + (64 / trks)).min(255) as u8,
+            ]);
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    for (x, y, path_pixel) in path_image.enumerate_pixels() {
+        let Rgba(path_data) = *path_pixel;
+        if path_data[3] > 0 {
+            let map_pixel = map_image.get_pixel_mut(x, y);
+            let Rgb(map_data) = *map_pixel;
+            let alpha = f64::from(path_data[3]) / 255.0;
+            let mut new_pixel = [0; 3];
+            for i in 0..2 {
+                new_pixel[i] = (f64::from(path_data[i]) * alpha
+                    + f64::from(map_data[i]) * (1.0 - alpha))
+                    .round() as u8;
+            }
+            *map_pixel = Rgb(new_pixel);
+        }
+    }
+
+    map_image
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,7 +402,7 @@ mod tests {
 </gpx>
 "#;
         assert_eq!(
-            get_pts(&gpx),
+            get_pts(&gpx).unwrap(),
             vec![
                 TrkPt {
                     center: Point {
