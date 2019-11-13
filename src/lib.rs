@@ -1,7 +1,8 @@
 #![feature(clamp)]
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use image::{Rgb, RgbImage, Rgba, RgbaImage};
+use conv::prelude::*;
+use image::{Rgb, RgbImage};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use simple_error::{bail, SimpleError};
@@ -294,52 +295,36 @@ pub fn overlay_image(
     let width = map_image.width();
     let height = map_image.height();
 
-    // make new blank image to draw path in (so we can sum up alpha values)
-    let mut path_image = RgbaImage::new(width, height);
+    // how frequently a pixel is part of a track, from 0 to 1 (capped during compositing)
+    let mut intensities = vec![vec![0.0; width as usize]; height as usize];
+    let single_step = 4.0
+        / f64::value_from(trks).expect(
+            "trks is too large to be represented as an f64; giving up on gradual heatmap stepping",
+        ); // after 25% of tracks a pixel will be 1
+    let quarter_step = single_step / 4.0; // smaller step for pixels that are neighbors of a track
 
     // used to clamp dots (and neighbors) from going beyond image bounds
-    let max_x = width - 2;
-    let max_y = height - 2;
+    let max_x = intensities.len() - 2;
+    let max_y = intensities[0].len() - 2;
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     for v in trk_pts {
         for pt in v {
             // linear transformations
-            let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as u32;
-            let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as u32;
+            let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as usize;
+            let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as usize;
             if x < 1 || x > max_x || y < 1 || y > max_y {
                 // maybe a problem with my code, maybe a problem with the gpx?
                 eprintln!("Pixel {}, {} out of range", x, y);
                 continue;
             }
 
-            path_image.put_pixel(x, y, Rgba([0, 0, 255, 255])); // mark pixel as pure blue
+            // increment intensity (will be maxed to 1 during compositing
+            intensities[x][y] += single_step;
+
             for (x1, y1) in &[(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
-                // surrounding pixels get transparent blue, based on number of tracks. given 1 track it would take a pixel being a neighbor 4 times to be opaque
-                let p = path_image.get_pixel_mut(*x1, *y1);
-                let Rgba(data) = *p;
-                *p = Rgba([
-                    data[0],
-                    data[1],
-                    255,                                                 // pure blue color
-                    (usize::from(data[3]) + (64 / trks)).min(255) as u8, // alpha based on "4 neighbors" from above normalized for number of trks
-                ]);
-            }
-            for (x1, y1) in &[
-                (x + 1, y + 1),
-                (x - 1, y + 1),
-                (x + 1, y - 1),
-                (x - 1, y - 1),
-            ] {
-                // diaognal pixels get more transparent blue, based on number of tracks. given 1 track it would take a pixel being a neighbor 8 times to be opaque
-                let p = path_image.get_pixel_mut(*x1, *y1);
-                let Rgba(data) = *p;
-                *p = Rgba([
-                    data[0],
-                    data[1],
-                    255,                                                 // pure blue color
-                    (usize::from(data[3]) + (32 / trks)).min(255) as u8, // alpha based on "8 neighbors" from above normalized for number of trks
-                ]);
+                // increment intensity for neighbors (will be maxed to 1 during compositing
+                intensities[*x1][*y1] += quarter_step;
             }
         }
     }
@@ -347,26 +332,28 @@ pub fn overlay_image(
     // composit path_image onto map_image
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
-    for (x, y, path_pixel) in path_image.enumerate_pixels() {
-        let Rgba(path_data) = *path_pixel;
-        // if pixel isn't blank (0 alpha)
-        if path_data[3] > 0 {
-            let map_pixel = map_image.get_pixel_mut(x, y);
-            let Rgb(map_data) = *map_pixel;
-            let alpha = f64::from(path_data[3]) / 255.0; // transform alpha from (0, 255) to (0, 1)
-            let mut new_pixel = [0; 3];
+    for (x, row) in intensities.iter().enumerate() {
+        for (y, &intensity) in row.iter().enumerate() {
+            if intensity > 0.0 {
+                let alpha = intensity.min(1.0);
+                let track_color = [0, 0, 255]; // color that pixel with alpha 1 will be
 
-            // composit each color channel
-            for i in 0..3 {
-                let color_a = f64::from(path_data[i]);
-                let color_b = f64::from(map_data[i]);
-                new_pixel[i] = (color_a * alpha + color_b * (1.0 - alpha))
-                    .clamp(0.0, 255.0)
-                    .round() as u8;
+                let map_pixel = map_image.get_pixel_mut(x as u32, y as u32);
+                let Rgb(map_data) = *map_pixel;
+
+                let mut new_pixel = [0; 3];
+                // composit each color channel
+                for i in 0..3 {
+                    let color_a = f64::from(track_color[i]);
+                    let color_b = f64::from(map_data[i]);
+                    new_pixel[i] = (color_a * alpha + color_b * (1.0 - alpha))
+                        .clamp(0.0, 255.0)
+                        .round() as u8;
+                }
+
+                // save new composited pixel to map_image
+                *map_pixel = Rgb(new_pixel);
             }
-
-            // save new composited pixel to map_image
-            *map_pixel = Rgb(new_pixel);
         }
     }
 
