@@ -54,14 +54,16 @@ pub struct MapInfo {
 }
 
 /// Parses trkpt's from gpx file into vector
-pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
+pub fn get_pts(gpx: &str, type_filter: &Option<String>) -> Result<Vec<TrkPt>, SimpleError> {
     let mut reader = Reader::from_str(&gpx);
     reader.trim_text(true);
 
     let mut buf = Vec::new();
 
     let mut in_trk = false; // true if we're between a <trk> and </trk> tag (the bulk of the gpx file)
+    let mut in_trkseg = false; // true if we're between a <trkseg> and </trkseg> tag
     let mut in_time = false; // true if we're in a <time> tag (the next event should be the Text of the tag))
+    let mut in_type = false; // true if we're in a <type> tag that's in a <trk> block
 
     let mut curr_trk_pt: Option<&mut TrkPt> = None; // refernece to the TrkPt current being processed (stored at the tail of the trk_pts vector), this is set to None when we hit </trkpt>
     let mut trk_pts = Vec::new();
@@ -87,10 +89,16 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => match e.name() {
                 b"trk" => in_trk = true, // mark that we're within <trk> </trk>, which we will be for most of the file
+                b"trkseg" => in_trkseg = true, // mark that we're within <trkseg> </trkseg>
+                b"type" => in_type = in_trk, // mark that we're within <type> in a <trk>
                 b"trkpt" => {
                     if !in_trk {
                         // we could ignore a <trkpt> outside of <trk> but this seems malformed so we error out
                         bail!("trkpt out of trk");
+                    }
+                    if !in_trkseg {
+                        // we could ignore a <trkpt> outside of <trkseg> but this seems malformed so we error out
+                        bail!("trkpt out of trkseg");
                     }
                     if curr_trk_pt.is_some() {
                         // same here, seems malformed so we error out
@@ -143,13 +151,23 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
             },
             Ok(Event::End(ref e)) => match e.name() {
                 b"trk" => in_trk = false,
+                b"trkseg" => in_trkseg = false,
                 b"time" => in_time = false,
+                b"type" => in_type = false,
                 b"trkpt" => {
                     curr_trk_pt = None; // done with this TrkPt
                 }
                 _ => (),
             },
             Ok(Event::Text(e)) => {
+                if in_type {
+                    if let Some(filter) = type_filter {
+                        // if we're in <type> and we have a set filter, check that this segment matches that filter, otherwise return nothing
+                        if e.unescape_and_decode(&reader).unwrap() != *filter {
+                            return Ok(Vec::new());
+                        }
+                    }
+                }
                 if in_time {
                     // if we're in <time> read and parse it for the curr_trk_pt
                     curr_trk_pt
@@ -177,7 +195,7 @@ pub fn get_pts(gpx: &str) -> Result<Vec<TrkPt>, SimpleError> {
 #[must_use]
 /// Iterates over entires in directory and tries to parse them as gpx files if they're files.
 /// Returns a vector of vectors (one per processed file) of `TrkPts` from the directory contents
-pub fn get_pts_dir(directory: &PathBuf) -> Vec<Vec<TrkPt>> {
+pub fn get_pts_dir(directory: &PathBuf, type_filter: &Option<String>) -> Vec<Vec<TrkPt>> {
     let mut trk_pts = Vec::new();
 
     for entry in fs::read_dir(directory).expect("Error reading directory") {
@@ -190,8 +208,12 @@ pub fn get_pts_dir(directory: &PathBuf) -> Vec<Vec<TrkPt>> {
                     }
                     let contents = fs::read_to_string(file.path()).expect("Unable to read file");
                     // parse file into TrkPts and add them to existing vector
-                    match get_pts(&contents) {
-                        Ok(pts) => trk_pts.push(pts),
+                    match get_pts(&contents, type_filter) {
+                        Ok(pts) => {
+                            if !pts.is_empty() {
+                                trk_pts.push(pts);
+                            }
+                        }
                         Err(e) => eprintln!("Error reading {:?}\n{}", file.path(), e),
                     }
                 }
@@ -444,7 +466,7 @@ mod tests {
 </gpx>
 "#;
         assert_eq!(
-            get_pts(&gpx).unwrap(),
+            get_pts(&gpx, &None).unwrap(),
             vec![
                 TrkPt {
                     center: Point {

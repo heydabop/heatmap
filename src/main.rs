@@ -23,6 +23,10 @@ struct Opt {
     /// Ratio of tracks a pixel has to be part of to become opaque (higher values will result in more transparent tracks)
     #[structopt(short, long, default_value = "0.25")]
     ratio: f64,
+
+    /// Only map trks with this type
+    #[structopt(long = "type-filter")]
+    type_filter: Option<String>,
 }
 
 fn main() {
@@ -47,7 +51,7 @@ fn main() {
         process::exit(1);
     }
 
-    let trk_pts = heatmap::get_pts_dir(&opt.directory);
+    let trk_pts = heatmap::get_pts_dir(&opt.directory, &opt.type_filter);
 
     if trk_pts.is_empty() {
         eprintln!("No valid files loaded");
