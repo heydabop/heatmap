@@ -104,15 +104,7 @@ fn main() {
         opt.ratio,
     );
 
-    let image_filename = format!(
-        "heatmap_{}_{}.png",
-        opt.directory
-            .file_name()
-            .unwrap_or_default()
-            .to_str()
-            .unwrap_or_default(),
-        opt.ratio
-    );
+    let image_filename = format!("heatmap_{}.png", Utc::now().timestamp_millis());
     heatmap_image
         .save(&image_filename)
         .expect("Error saving final png");
