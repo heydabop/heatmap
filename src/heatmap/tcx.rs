@@ -112,11 +112,14 @@ pub fn get_pts(
                 b"Track" => in_track = false,
                 b"Trackpoint" => {
                     in_trackpoint = false;
-                    if curr_lat.is_none() || curr_lng.is_none() || curr_time.is_none() {
+                    if curr_lat.is_none() || curr_lng.is_none() {
                         eprintln!(
                             "Incomplete <Trackpoint>: {:?} {:?} {:?}",
                             curr_lat, curr_lng, curr_time
                         );
+                        curr_time = None;
+                        curr_lat = None;
+                        curr_lng = None;
                         continue;
                     }
                     trk_pts.push(super::TrkPt {
@@ -124,7 +127,7 @@ pub fn get_pts(
                             lat: curr_lat.take().unwrap(),
                             lng: curr_lng.take().unwrap(),
                         },
-                        time: curr_time.take().unwrap(),
+                        time: curr_time.take(),
                     });
                 }
                 b"Time" => in_time = false,

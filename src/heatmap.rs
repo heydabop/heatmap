@@ -38,12 +38,21 @@ impl fmt::Debug for Point {
 #[derive(PartialEq)]
 pub struct TrkPt {
     pub center: Point,
-    pub time: DateTime<Utc>,
+    pub time: Option<DateTime<Utc>>,
 }
 
 impl fmt::Debug for TrkPt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} @ {}", self.center, self.time.to_rfc3339())
+        write!(
+            f,
+            "{:?} @ {:?}",
+            self.center,
+            if let Some(time) = self.time {
+                Some(time.to_rfc3339())
+            } else {
+                None
+            }
+        )
     }
 }
 
@@ -253,17 +262,19 @@ pub fn overlay_image(
             }
 
             // draw a line from previous pixel to this one
-            if prev_time.is_some() {
-                let prev_x = prev_x.unwrap();
+            if let Some(prev_x) = prev_x {
                 let prev_y = prev_y.unwrap();
                 if prev_x == x && prev_y == y {
                     // dont redraw on same pixel repeatedly (to try and prevent overly shading "slow" sections)
-                    prev_time = Some(pt.time);
+                    prev_time = pt.time;
                     continue;
                 }
 
                 // dont draw a line between points that are more than 10 seconds apart
-                if (pt.time - prev_time.unwrap()).num_seconds().abs() <= 10 {
+                if pt.time.is_none()
+                    || prev_time.is_none()
+                    || (pt.time.unwrap() - prev_time.unwrap()).num_seconds().abs() <= 10
+                {
                     let (x1, y1, x2, y2) = if prev_x >= x {
                         (x, y, prev_x, prev_y)
                     } else {
@@ -301,7 +312,7 @@ pub fn overlay_image(
 
             prev_x = Some(x);
             prev_y = Some(y);
-            prev_time = Some(pt.time);
+            prev_time = pt.time;
         }
     }
 
@@ -423,56 +434,56 @@ mod tests {
                         lat: 30.2430140,
                         lng: -97.8100160
                     },
-                    time: "2019-11-10T20:49:52Z".parse::<DateTime<Utc>>().unwrap()
+                    time: Some("2019-11-10T20:49:52Z".parse::<DateTime<Utc>>().unwrap())
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2429950,
                         lng: -97.8100270
                     },
-                    time: "2019-11-10T20:49:53Z".parse::<DateTime<Utc>>().unwrap()
+                    time: Some("2019-11-10T20:49:53Z".parse::<DateTime<Utc>>().unwrap())
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2428630,
                         lng: -97.8101550
                     },
-                    time: "2019-11-10T20:49:54Z".parse::<DateTime<Utc>>().unwrap()
+                    time: Some("2019-11-10T20:49:54Z".parse::<DateTime<Utc>>().unwrap())
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2428470,
                         lng: -97.8102190
                     },
-                    time: "2019-11-10T20:49:55Z".parse::<DateTime<Utc>>().unwrap()
+                    time: Some("2019-11-10T20:49:55Z".parse::<DateTime<Utc>>().unwrap())
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2428310,
                         lng: -97.8102830
                     },
-                    time: "2019-11-10T20:49:56Z".parse::<DateTime<Utc>>().unwrap()
+                    time: Some("2019-11-10T20:49:56Z".parse::<DateTime<Utc>>().unwrap())
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2427670,
                         lng: -97.8105240
                     },
-                    time: "2019-11-10T20:49:57Z".parse::<DateTime<Utc>>().unwrap()
+                    time: Some("2019-11-10T20:49:57Z".parse::<DateTime<Utc>>().unwrap())
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2427500,
                         lng: -97.8105730
                     },
-                    time: "2019-11-10T20:49:58Z".parse::<DateTime<Utc>>().unwrap()
+                    time: Some("2019-11-10T20:49:58Z".parse::<DateTime<Utc>>().unwrap())
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2427330,
                         lng: -97.8106130
                     },
-                    time: "2019-11-10T20:49:59Z".parse::<DateTime<Utc>>().unwrap()
+                    time: Some("2019-11-10T20:49:59Z".parse::<DateTime<Utc>>().unwrap())
                 }
             ]
         );
