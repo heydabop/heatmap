@@ -1,9 +1,14 @@
+#![feature(clamp)]
+
 extern crate reqwest;
 
+use chrono::Utc;
 use image::{png, ImageDecoder, Rgb, RgbImage};
 use std::path::PathBuf;
 use std::process::{self, Command};
 use structopt::StructOpt;
+
+mod heatmap;
 
 #[derive(StructOpt)]
 #[structopt(name = "heatmap")]
