@@ -30,7 +30,7 @@ struct Opt {
     directory: PathBuf,
 
     /// Ratio of tracks a pixel has to be part of to become opaque (higher values will result in more transparent tracks)
-    #[structopt(short, long, default_value = "0.25")]
+    #[structopt(short, long, default_value = "0.125")]
     ratio: f64,
 
     /// Only map running tracks (overridden by --bike)

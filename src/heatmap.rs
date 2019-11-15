@@ -252,14 +252,18 @@ pub fn overlay_image(
                 continue;
             }
 
-            intensities[x as usize][y as usize] += single_step;
-
             // draw a line from previous pixel to this one
-            if let Some(prev_time) = prev_time {
+            if prev_time.is_some() {
+                let prev_x = prev_x.unwrap();
+                let prev_y = prev_y.unwrap();
+                if prev_x == x && prev_y == y {
+                    // dont redraw on same pixel repeatedly (to try and prevent overly shading "slow" sections)
+                    prev_time = Some(pt.time);
+                    continue;
+                }
+
                 // dont draw a line between points that are more than 10 seconds apart
-                if (pt.time - prev_time).num_seconds().abs() <= 10 {
-                    let prev_x = prev_x.unwrap();
-                    let prev_y = prev_y.unwrap();
+                if (pt.time - prev_time.unwrap()).num_seconds().abs() <= 10 {
                     let (x1, y1, x2, y2) = if prev_x >= x {
                         (x, y, prev_x, prev_y)
                     } else {
@@ -271,6 +275,7 @@ pub fn overlay_image(
                         //increment along x, drawing at appropriate y
                         for curr_x in x1 + 1..x2 {
                             let curr_y = slope.mul_add(f64::from(curr_x), b).round() as usize;
+                            // capped to 1 during compositing
                             intensities[curr_x as usize][curr_y] += single_step;
                         }
                     } else {
@@ -284,11 +289,15 @@ pub fn overlay_image(
                         //increment along y, drawing at appropriate x
                         for curr_y in y1 + 1..y2 {
                             let curr_x = slope.mul_add(f64::from(curr_y), b).round() as usize;
+                            // capped to 1 during compositing
                             intensities[curr_x][curr_y as usize] += single_step;
                         }
                     }
                 }
             }
+
+            // draw current pixel (cappted to 1 during compositing)
+            intensities[x as usize][y as usize] += single_step;
 
             prev_x = Some(x);
             prev_y = Some(y);
