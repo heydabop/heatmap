@@ -109,7 +109,7 @@ fn main() {
         opt.ratio,
     );
 
-    let image_filename = format!("heatmap_{}.png", Utc::now().timestamp_millis());
+    let image_filename = format!("heatmap_{}.png", Utc::now().timestamp());
     heatmap_image
         .save(&image_filename)
         .expect("Error saving final png");
