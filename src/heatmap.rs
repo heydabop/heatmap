@@ -213,50 +213,84 @@ pub fn overlay_image(
     ratio: f64,
 ) -> RgbImage {
     let trks = trk_pts.len();
-    let width = map_image.width();
-    let height = map_image.height();
+    let width = i32::value_from(map_image.width()).expect("image width must fit in i32");
+    let height = i32::value_from(map_image.height()).expect("image height must fit in i32");
 
     // how frequently a pixel is part of a track, from 0 to 1 (capped during compositing)
+    #[allow(clippy::cast_sign_loss)]
     let mut intensities = vec![vec![0.0; width as usize]; height as usize];
     let single_step = (ratio
         * f64::value_from(trks).expect(
             "trks is too large to be represented as an f64; giving up on gradual heatmap stepping",
         ))
     .recip();
-    let neighbor_step = single_step / 12.0; // smaller step for pixels that are neighbors of a track
 
     // used to clamp dots (and neighbors) from going beyond image bounds
-    let max_x = intensities.len() - 2;
-    let max_y = intensities[0].len() - 2;
+    let max_x = width - 2;
+    let max_y = height - 2;
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     for v in trk_pts {
+        let mut prev_x: Option<i32> = None; //the x of the last pixel, for line drawing
+        let mut prev_y: Option<i32> = None; //the y of the last pixel
+        let mut prev_time: Option<DateTime<Utc>> = None; //the timestamp of the TrkPt used to draw the last pixel
         for pt in v {
             // linear transformations
-            let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as usize;
-            let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as usize;
+            let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as i32;
+            let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as i32;
             if x < 1 || x > max_x || y < 1 || y > max_y {
                 // maybe a problem with my code, maybe a problem with the gpx/tcx?
                 eprintln!("Pixel {}, {} out of range", x, y);
                 continue;
             }
 
-            // increment intensity (will be maxed to 1 during compositing
-            intensities[x][y] += single_step;
+            intensities[x as usize][y as usize] += single_step;
 
-            for (x1, y1) in &[
-                (x + 1, y),
-                (x - 1, y),
-                (x, y + 1),
-                (x, y - 1),
-                (x + 1, y + 1),
-                (x - 1, y - 1),
-                (x + 1, y - 1),
-                (x - 1, y + 1),
-            ] {
-                // increment intensity for neighbors (will be maxed to 1 during compositing
-                intensities[*x1][*y1] += neighbor_step
+            // draw a line from previous pixel to this one
+            if let Some(prev_time) = prev_time {
+                // dont draw a line between points that are more than 10 seconds apart
+                if (pt.time - prev_time).num_seconds().abs() <= 10 {
+                    let prev_x = prev_x.unwrap();
+                    let prev_y = prev_y.unwrap();
+                    let (x1, y1, x2, y2) = if prev_x >= x {
+                        (x, y, prev_x, prev_y)
+                    } else {
+                        (prev_x, prev_y, x, y)
+                    };
+                    let slope = f64::from(y2 - y1) / f64::from(x2 - x1);
+                    if slope.abs() <= 1.0 {
+                        let b = f64::from(y1) - slope * f64::from(x1);
+                        //increment along x, drawing at appropriate y
+                        for curr_x in x1..=x2 {
+                            if curr_x == x {
+                                continue;
+                            }
+                            let curr_y = slope.mul_add(f64::from(curr_x), b).round() as usize;
+                            intensities[curr_x as usize][curr_y] += single_step;
+                        }
+                    } else {
+                        let (x1, y1, x2, y2) = if prev_y >= y {
+                            (x, y, prev_x, prev_y)
+                        } else {
+                            (prev_x, prev_y, x, y)
+                        };
+                        let slope = f64::from(x2 - x1) / f64::from(y2 - y1);
+                        let b = f64::from(x1) - slope * f64::from(y1);
+                        //increment along y, drawing at appropriate x
+                        for curr_y in y1..=y2 {
+                            if curr_y == y {
+                                continue;
+                            }
+                            let curr_x = slope.mul_add(f64::from(curr_y), b).round() as usize;
+                            intensities[curr_x][curr_y as usize] += single_step;
+                        }
+                    }
+                }
             }
+
+            prev_x = Some(x);
+            prev_y = Some(y);
+            prev_time = Some(pt.time);
         }
     }
 
