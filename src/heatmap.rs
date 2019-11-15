@@ -219,7 +219,7 @@ pub fn overlay_image(
         * f64::value_from(trks).expect(
             "trks is too large to be represented as an f64; giving up on gradual heatmap stepping",
         ));
-    let quarter_step = single_step / 4.0; // smaller step for pixels that are neighbors of a track
+    let neighbor_step = single_step / 12.0; // smaller step for pixels that are neighbors of a track
 
     // used to clamp dots (and neighbors) from going beyond image bounds
     let max_x = intensities.len() - 2;
@@ -240,9 +240,18 @@ pub fn overlay_image(
             // increment intensity (will be maxed to 1 during compositing
             intensities[x][y] += single_step;
 
-            for (x1, y1) in &[(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
+            for (x1, y1) in &[
+                (x + 1, y),
+                (x - 1, y),
+                (x, y + 1),
+                (x, y - 1),
+                (x + 1, y + 1),
+                (x - 1, y - 1),
+                (x + 1, y - 1),
+                (x - 1, y + 1),
+            ] {
                 // increment intensity for neighbors (will be maxed to 1 during compositing
-                intensities[*x1][*y1] += quarter_step;
+                intensities[*x1][*y1] += neighbor_step
             }
         }
     }
