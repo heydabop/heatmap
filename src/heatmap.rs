@@ -261,10 +261,7 @@ pub fn overlay_image(
                     if slope.abs() <= 1.0 {
                         let b = f64::from(y1) - slope * f64::from(x1);
                         //increment along x, drawing at appropriate y
-                        for curr_x in x1..=x2 {
-                            if curr_x == x {
-                                continue;
-                            }
+                        for curr_x in x1 + 1..x2 {
                             let curr_y = slope.mul_add(f64::from(curr_x), b).round() as usize;
                             intensities[curr_x as usize][curr_y] += single_step;
                         }
@@ -277,10 +274,7 @@ pub fn overlay_image(
                         let slope = f64::from(x2 - x1) / f64::from(y2 - y1);
                         let b = f64::from(x1) - slope * f64::from(y1);
                         //increment along y, drawing at appropriate x
-                        for curr_y in y1..=y2 {
-                            if curr_y == y {
-                                continue;
-                            }
+                        for curr_y in y1 + 1..y2 {
                             let curr_x = slope.mul_add(f64::from(curr_y), b).round() as usize;
                             intensities[curr_x][curr_y as usize] += single_step;
                         }
