@@ -24,6 +24,11 @@ enum XmlType {
     Tcx,
 }
 
+pub enum ActivityType {
+    Bike,
+    Run,
+}
+
 impl fmt::Debug for Point {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}, {}", self.lat, self.lng)
@@ -50,7 +55,10 @@ pub struct MapInfo {
 }
 
 /// Parses trkpt's from gpx or tcx file into vector
-pub fn get_pts(contents: &str, type_filter: &Option<String>) -> Result<Vec<TrkPt>, SimpleError> {
+pub fn get_pts(
+    contents: &str,
+    type_filter: &Option<ActivityType>,
+) -> Result<Vec<TrkPt>, SimpleError> {
     let mut reader = Reader::from_str(&contents);
     reader.trim_text(true);
 
@@ -87,7 +95,7 @@ pub fn get_pts(contents: &str, type_filter: &Option<String>) -> Result<Vec<TrkPt
 #[must_use]
 /// Iterates over entires in directory and tries to parse them as gpx or tcx files if they're files.
 /// Returns a vector of vectors (one per processed file) of `TrkPts` from the directory contents
-pub fn get_pts_dir(directory: &PathBuf, type_filter: &Option<String>) -> Vec<Vec<TrkPt>> {
+pub fn get_pts_dir(directory: &PathBuf, type_filter: &Option<ActivityType>) -> Vec<Vec<TrkPt>> {
     let mut trk_pts = Vec::new();
 
     for entry in fs::read_dir(directory).expect("Error reading directory") {

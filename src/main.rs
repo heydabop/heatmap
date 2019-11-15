@@ -17,6 +17,10 @@ struct Opt {
     #[structopt(short = "t", long = "token")]
     access_token: String,
 
+    /// Only mape biking tracks
+    #[structopt(long)]
+    bike: bool,
+
     /// RGB Color used for heatmap
     #[structopt(short, long, default_value = "0,0,255")]
     color: String,
@@ -29,9 +33,9 @@ struct Opt {
     #[structopt(short, long, default_value = "0.25")]
     ratio: f64,
 
-    /// Only map trks with this type
-    #[structopt(long = "type-filter")]
-    type_filter: Option<String>,
+    /// Only map running tracks (overridden by --bike)
+    #[structopt(long)]
+    run: bool,
 }
 
 fn main() {
@@ -56,7 +60,15 @@ fn main() {
         process::exit(1);
     }
 
-    let trk_pts = heatmap::get_pts_dir(&opt.directory, &opt.type_filter);
+    let filter = if opt.bike {
+        Some(heatmap::ActivityType::Bike)
+    } else if opt.run {
+        Some(heatmap::ActivityType::Run)
+    } else {
+        None
+    };
+
+    let trk_pts = heatmap::get_pts_dir(&opt.directory, &filter);
 
     if trk_pts.is_empty() {
         eprintln!("No valid files loaded");

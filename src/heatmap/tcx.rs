@@ -6,9 +6,15 @@ use simple_error::{bail, SimpleError};
 #[allow(clippy::too_many_lines)]
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
-    type_filter: &Option<String>,
+    type_filter: &Option<super::ActivityType>,
 ) -> Result<Vec<super::TrkPt>, SimpleError> {
     let mut buf = Vec::new();
+
+    let filter_string = match type_filter {
+        Some(super::ActivityType::Bike) => Some("Biking"),
+        Some(super::ActivityType::Run) => Some("Running"),
+        None => None,
+    };
 
     // The following bools track if we're between a given start an end event
     let mut in_activities = false; // true if we're between a <Activites> and </Activites> tag (the bulk of the tcx file)
@@ -38,10 +44,10 @@ pub fn get_pts(
                     }
                     in_activity = true;
 
-                    if let Some(filter) = type_filter {
+                    if let Some(filter_string) = filter_string {
                         for attr in e.attributes().map(Result::unwrap) {
                             if let b"Sport" = attr.key {
-                                if filter
+                                if filter_string
                                     != std::str::from_utf8(
                                         &attr
                                             .unescaped_value()

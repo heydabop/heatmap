@@ -6,9 +6,15 @@ use simple_error::{bail, SimpleError};
 #[allow(clippy::too_many_lines)]
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
-    type_filter: &Option<String>,
+    type_filter: &Option<super::ActivityType>,
 ) -> Result<Vec<super::TrkPt>, SimpleError> {
     let mut buf = Vec::new();
+
+    let filter_string = match type_filter {
+        Some(super::ActivityType::Bike) => Some("1"),
+        Some(super::ActivityType::Run) => Some("9"),
+        None => None,
+    };
 
     let mut in_trk = false; // true if we're between a <trk> and </trk> tag (the bulk of the gpx file)
     let mut in_trkseg = false; // true if we're between a <trkseg> and </trkseg> tag
@@ -106,9 +112,9 @@ pub fn get_pts(
             },
             Ok(Event::Text(e)) => {
                 if in_type {
-                    if let Some(filter) = type_filter {
+                    if let Some(filter_string) = filter_string {
                         // if we're in <type> and we have a set filter, check that this segment matches that filter, otherwise return nothing
-                        if e.unescape_and_decode(&reader).unwrap() != *filter {
+                        if e.unescape_and_decode(&reader).unwrap() != filter_string {
                             return Ok(Vec::new());
                         }
                     }
