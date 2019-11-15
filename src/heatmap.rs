@@ -145,13 +145,15 @@ pub fn destination(p: &Point, bearing: f64, distance: f64) -> Point {
 
     let lat_rad = p.lat.to_radians();
     let b_rad = bearing.to_radians();
+    let (lat_rad_sin, lat_rad_cos) = lat_rad.sin_cos();
+    let (ang_dist_sin, ang_dist_cos) = ang_dist.sin_cos();
 
-    let lat = (lat_rad.sin() * ang_dist.cos() + lat_rad.cos() * ang_dist.sin() * b_rad.cos())
+    let lat = (lat_rad_sin.mul_add(ang_dist_cos, lat_rad_cos * ang_dist_sin * b_rad.cos()))
         .asin()
         .to_degrees();
     let lng = p.lng
-        + (b_rad.sin() * ang_dist.sin() * lat_rad.cos())
-            .atan2(ang_dist.cos() - lat_rad.sin() * lat.to_radians().sin())
+        + (b_rad.sin() * ang_dist_sin * lat_rad_cos)
+            .atan2(ang_dist_cos - lat_rad_sin * lat.to_radians().sin())
             .to_degrees();
     Point { lat, lng }
 }
@@ -182,7 +184,8 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
     let center = Point { lat, lng };
 
     // calculate new min/max points on map by finding destination point from center to corners
-    let diagonal = ((meters_per_pixel * pixels / 2.0).powi(2) * 2.0).sqrt();
+    let dist_to_edge = meters_per_pixel * pixels / 2.0;
+    let diagonal = dist_to_edge.hypot(dist_to_edge);
     let min = destination(&center, 315.0, diagonal);
     let max = destination(&center, 135.0, diagonal);
     // calculate scale for linear transformations of lat/lng to pixel
@@ -215,10 +218,11 @@ pub fn overlay_image(
 
     // how frequently a pixel is part of a track, from 0 to 1 (capped during compositing)
     let mut intensities = vec![vec![0.0; width as usize]; height as usize];
-    let single_step = 1.0 / (ratio
+    let single_step = (ratio
         * f64::value_from(trks).expect(
             "trks is too large to be represented as an f64; giving up on gradual heatmap stepping",
-        ));
+        ))
+    .recip();
     let neighbor_step = single_step / 12.0; // smaller step for pixels that are neighbors of a track
 
     // used to clamp dots (and neighbors) from going beyond image bounds
@@ -272,7 +276,7 @@ pub fn overlay_image(
                 for i in 0..3 {
                     let color_a = f64::from(track_color[i]);
                     let color_b = f64::from(map_data[i]);
-                    new_pixel[i] = (color_a * alpha + color_b * (1.0 - alpha))
+                    new_pixel[i] = (color_a.mul_add(alpha, color_b * (1.0 - alpha)))
                         .clamp(0.0, 255.0)
                         .round() as u8;
                 }
