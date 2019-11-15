@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use conv::prelude::*;
 use image::{Rgb, RgbImage};
 use quick_xml::events::Event;
@@ -9,6 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 
 mod gpx;
+mod tcx;
 
 const R: f64 = 6371e3; // earth mean radius in meters
 
@@ -16,6 +17,11 @@ const R: f64 = 6371e3; // earth mean radius in meters
 pub struct Point {
     pub lat: f64,
     pub lng: f64,
+}
+
+enum XmlType {
+    Gpx,
+    Tcx,
 }
 
 impl fmt::Debug for Point {
@@ -27,22 +33,12 @@ impl fmt::Debug for Point {
 #[derive(PartialEq)]
 pub struct TrkPt {
     pub center: Point,
-    pub time: Option<DateTime<Utc>>,
+    pub time: DateTime<Utc>,
 }
 
 impl fmt::Debug for TrkPt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:?} @ {}",
-            self.center,
-            self.time
-                .unwrap_or_else(|| DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(0, 0),
-                    Utc
-                ))
-                .to_rfc3339()
-        )
+        write!(f, "{:?} @ {}", self.center, self.time.to_rfc3339())
     }
 }
 
@@ -53,9 +49,9 @@ pub struct MapInfo {
     pub scale: Point,
 }
 
-/// Parses trkpt's from gpx file into vector
-pub fn get_pts(gpx: &str, type_filter: &Option<String>) -> Result<Vec<TrkPt>, SimpleError> {
-    let mut reader = Reader::from_str(&gpx);
+/// Parses trkpt's from gpx or tcx file into vector
+pub fn get_pts(contents: &str, type_filter: &Option<String>) -> Result<Vec<TrkPt>, SimpleError> {
+    let mut reader = Reader::from_str(&contents);
     reader.trim_text(true);
 
     let mut buf = Vec::new();
@@ -68,22 +64,28 @@ pub fn get_pts(gpx: &str, type_filter: &Option<String>) -> Result<Vec<TrkPt>, Si
     }
     buf.clear();
 
-    // check for <gpx> opening tag
-    match reader.read_event(&mut buf) {
+    // check for <gpx> or <TrainingCenterDatabase> opening tag
+    let file_type = match reader.read_event(&mut buf) {
         Ok(Event::Start(ref e)) => match e.name() {
-            b"gpx" => (),
-            _ => bail!("Expected <gpx>, got {:?}", e.name()),
+            b"gpx" => XmlType::Gpx,
+            b"TrainingCenterDatabase" => XmlType::Tcx,
+            _ => bail!(
+                "Expected <gpx> or <TrainingCenterDatabase>, got {:?}",
+                e.name()
+            ),
         },
         Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
-        _ => bail!("Expected <gpx>"),
-    }
-    buf.clear();
+        _ => bail!("Expected <gpx> or <TrainingCenterDatabase>"),
+    };
 
-    gpx::get_pts(reader, type_filter)
+    match file_type {
+        XmlType::Gpx => gpx::get_pts(reader, type_filter),
+        XmlType::Tcx => tcx::get_pts(reader, type_filter),
+    }
 }
 
 #[must_use]
-/// Iterates over entires in directory and tries to parse them as gpx files if they're files.
+/// Iterates over entires in directory and tries to parse them as gpx or tcx files if they're files.
 /// Returns a vector of vectors (one per processed file) of `TrkPts` from the directory contents
 pub fn get_pts_dir(directory: &PathBuf, type_filter: &Option<String>) -> Vec<Vec<TrkPt>> {
     let mut trk_pts = Vec::new();
@@ -230,7 +232,7 @@ pub fn overlay_image(
             let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as usize;
             let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as usize;
             if x < 1 || x > max_x || y < 1 || y > max_y {
-                // maybe a problem with my code, maybe a problem with the gpx?
+                // maybe a problem with my code, maybe a problem with the gpx/tcx?
                 eprintln!("Pixel {}, {} out of range", x, y);
                 continue;
             }
@@ -309,7 +311,7 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::unreadable_literal)]
-    fn trk_pts() {
+    fn gpx() {
         let gpx = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gpx xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
  <metadata>
@@ -363,56 +365,56 @@ mod tests {
                         lat: 30.2430140,
                         lng: -97.8100160
                     },
-                    time: Some("2019-11-10T20:49:52Z".parse::<DateTime<Utc>>().unwrap())
+                    time: "2019-11-10T20:49:52Z".parse::<DateTime<Utc>>().unwrap()
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2429950,
                         lng: -97.8100270
                     },
-                    time: Some("2019-11-10T20:49:53Z".parse::<DateTime<Utc>>().unwrap())
+                    time: "2019-11-10T20:49:53Z".parse::<DateTime<Utc>>().unwrap()
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2428630,
                         lng: -97.8101550
                     },
-                    time: Some("2019-11-10T20:49:54Z".parse::<DateTime<Utc>>().unwrap())
+                    time: "2019-11-10T20:49:54Z".parse::<DateTime<Utc>>().unwrap()
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2428470,
                         lng: -97.8102190
                     },
-                    time: Some("2019-11-10T20:49:55Z".parse::<DateTime<Utc>>().unwrap())
+                    time: "2019-11-10T20:49:55Z".parse::<DateTime<Utc>>().unwrap()
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2428310,
                         lng: -97.8102830
                     },
-                    time: Some("2019-11-10T20:49:56Z".parse::<DateTime<Utc>>().unwrap())
+                    time: "2019-11-10T20:49:56Z".parse::<DateTime<Utc>>().unwrap()
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2427670,
                         lng: -97.8105240
                     },
-                    time: Some("2019-11-10T20:49:57Z".parse::<DateTime<Utc>>().unwrap())
+                    time: "2019-11-10T20:49:57Z".parse::<DateTime<Utc>>().unwrap()
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2427500,
                         lng: -97.8105730
                     },
-                    time: Some("2019-11-10T20:49:58Z".parse::<DateTime<Utc>>().unwrap())
+                    time: "2019-11-10T20:49:58Z".parse::<DateTime<Utc>>().unwrap()
                 },
                 TrkPt {
                     center: Point {
                         lat: 30.2427330,
                         lng: -97.8106130
                     },
-                    time: Some("2019-11-10T20:49:59Z".parse::<DateTime<Utc>>().unwrap())
+                    time: "2019-11-10T20:49:59Z".parse::<DateTime<Utc>>().unwrap()
                 }
             ]
         );
