@@ -29,6 +29,10 @@ struct Opt {
     #[structopt(name = "DIR", parse(from_os_str))]
     directory: PathBuf,
 
+    /// Minimum opacity of any track pixel that has at least 1 track on it
+    #[structopt(short, long, default_value = "0.3")]
+    min: f64,
+
     /// Ratio of tracks a pixel has to be part of to become opaque (higher values will result in more transparent tracks)
     #[structopt(short, long, default_value = "0.125")]
     ratio: f64,
@@ -121,6 +125,7 @@ fn main() {
         &trk_pts,
         Rgb([color[0], color[1], color[2]]),
         opt.ratio,
+        opt.min,
     );
 
     let image_filename = format!("heatmap_{}.png", Utc::now().timestamp());

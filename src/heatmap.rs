@@ -239,6 +239,7 @@ pub fn overlay_image(
     trk_pts: &[Vec<TrkPt>],
     track_color: Rgb<u8>,
     ratio: f64,
+    min_alpha: f64,
 ) -> RgbImage {
     let trks = trk_pts.len();
     let width = i32::value_from(map_image.width()).expect("image width must fit in i32");
@@ -252,6 +253,7 @@ pub fn overlay_image(
             "trks is too large to be represented as an f64; giving up on gradual heatmap stepping",
         ))
     .recip();
+    println!("Tracks: {} -- Step: {:.2}", trks, single_step);
 
     // used to clamp dots (and neighbors) from going beyond image bounds
     let max_x = width - 2;
@@ -330,10 +332,9 @@ pub fn overlay_image(
     #[allow(clippy::cast_sign_loss)]
     for (x, row) in factors.iter().enumerate() {
         for (y, &factor) in row.iter().enumerate() {
-            let factor = if factor == 1 { 2 } else { factor }; // boost visibility of pixels that only have 1 track on them
             let intensity = f64::from(factor) * single_step;
             if intensity > 0.0 {
-                let alpha = intensity.min(1.0);
+                let alpha = intensity.clamp(min_alpha, 1.0);
 
                 let map_pixel = map_image.get_pixel_mut(x as u32, y as u32);
                 let Rgb(map_data) = *map_pixel;
