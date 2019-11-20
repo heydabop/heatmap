@@ -40,6 +40,10 @@ struct Opt {
     /// Only map running tracks (overridden by --bike)
     #[structopt(long)]
     run: bool,
+
+    /// Mapbox style used for map image
+    #[structopt(long = "style", default_value = "dark-v10")]
+    mapbox_style: String,
 }
 
 fn main() {
@@ -100,7 +104,16 @@ fn main() {
     let pixels = 1280;
     let map_info = heatmap::calculate_map(pixels, &min, &max, 2.0);
     // get mapbox static API image based on center and zoom level from map_info
-    let mapbox_response = reqwest::get(&format!("https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/{},{},{}/{3}x{3}@2x?access_token={4}", map_info.center.lng, map_info.center.lat, map_info.zoom, pixels, opt.access_token)).expect("Error GETing mapbox image");
+    let mapbox_response = reqwest::get(&format!(
+        "https://api.mapbox.com/styles/v1/mapbox/{}/static/{},{},{}/{4}x{4}@2x?access_token={5}",
+        opt.mapbox_style,
+        map_info.center.lng,
+        map_info.center.lat,
+        map_info.zoom,
+        pixels,
+        opt.access_token
+    ))
+    .expect("Error GETing mapbox image");
     if !mapbox_response.status().is_success() {
         panic!(
             "Non success response code {} from mapbox",
