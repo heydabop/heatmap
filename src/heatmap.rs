@@ -244,9 +244,9 @@ pub fn overlay_image(
     let width = i32::value_from(map_image.width()).expect("image width must fit in i32");
     let height = i32::value_from(map_image.height()).expect("image height must fit in i32");
 
-    // how frequently a pixel is part of a track, from 0 to 1 (capped during compositing)
+    // count of how many times a pixel is part of a track, will be multiplied by single step and capped to 2 during compositing
     #[allow(clippy::cast_sign_loss)]
-    let mut intensities = vec![vec![0.0; width as usize]; height as usize];
+    let mut factors = vec![vec![0; width as usize]; height as usize];
     let single_step = (ratio
         * f64::value_from(trks).expect(
             "trks is too large to be represented as an f64; giving up on gradual heatmap stepping",
@@ -297,8 +297,7 @@ pub fn overlay_image(
                         //increment along x, drawing at appropriate y
                         for curr_x in x1 + 1..x2 {
                             let curr_y = slope.mul_add(f64::from(curr_x), b).round() as usize;
-                            // capped to 1 during compositing
-                            intensities[curr_x as usize][curr_y] += single_step;
+                            factors[curr_x as usize][curr_y] += 1;
                         }
                     } else {
                         let (x1, y1, x2, y2) = if prev_y >= y {
@@ -311,15 +310,14 @@ pub fn overlay_image(
                         //increment along y, drawing at appropriate x
                         for curr_y in y1 + 1..y2 {
                             let curr_x = slope.mul_add(f64::from(curr_y), b).round() as usize;
-                            // capped to 1 during compositing
-                            intensities[curr_x][curr_y as usize] += single_step;
+                            factors[curr_x][curr_y as usize] += 1;
                         }
                     }
                 }
             }
 
-            // draw current pixel (cappted to 1 during compositing)
-            intensities[x as usize][y as usize] += single_step;
+            // draw current pixel
+            factors[x as usize][y as usize] += 1;
 
             prev_x = Some(x);
             prev_y = Some(y);
@@ -330,8 +328,10 @@ pub fn overlay_image(
     // composit path_image onto map_image
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
-    for (x, row) in intensities.iter().enumerate() {
-        for (y, &intensity) in row.iter().enumerate() {
+    for (x, row) in factors.iter().enumerate() {
+        for (y, &factor) in row.iter().enumerate() {
+            let factor = if factor == 1 { 2 } else { factor }; // boost visibility of pixels that only have 1 track on them
+            let intensity = f64::from(factor) * single_step;
             if intensity > 0.0 {
                 let alpha = intensity.min(1.0);
 
