@@ -35,6 +35,17 @@ impl fmt::Debug for Point {
     }
 }
 
+impl std::ops::Mul<f64> for Point {
+    type Output = Self;
+
+    fn mul(self, factor: f64) -> Self {
+        Self {
+            lat: self.lat * factor,
+            lng: self.lng * factor,
+        }
+    }
+}
+
 #[derive(PartialEq)]
 pub struct TrkPt {
     pub center: Point,
@@ -178,7 +189,7 @@ pub fn destination(p: &Point, bearing: f64, distance: f64) -> Point {
 #[must_use]
 #[allow(clippy::doc_markdown)]
 /// Based on image size and lat/lng ranges, calculates the center and MapBox zoom level of a map, and the new minimum lat/lng and scale for linear transformation from lat/lng to pixel
-pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
+pub fn calculate_map(pixels: u32, min: &Point, max: &Point, scale_multiplier: f64) -> MapInfo {
     let pixels = f64::from(pixels);
 
     // simple centers
@@ -215,7 +226,7 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point) -> MapInfo {
         center,
         min,
         zoom,
-        scale,
+        scale: scale * scale_multiplier,
     }
 }
 
