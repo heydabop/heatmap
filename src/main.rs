@@ -22,7 +22,7 @@ struct Opt {
     bike: bool,
 
     /// RGB Color used for heatmap
-    #[structopt(short, long, default_value = "0,0,255")]
+    #[structopt(short, long, default_value = "0,255,0")]
     color: String,
 
     /// Directory containing .gpx files
