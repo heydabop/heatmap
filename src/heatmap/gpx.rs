@@ -23,8 +23,6 @@ pub fn get_pts(
     let mut trk_pts = Vec::new();
 
     loop {
-        buf.clear();
-
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => match e.name() {
                 b"metadata" => {
@@ -78,6 +76,8 @@ pub fn get_pts(
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
+
+        buf.clear();
     }
 
     Ok(trk_pts)
@@ -90,7 +90,6 @@ fn metadata_time(reader: &mut Reader<&[u8]>) -> Result<Option<DateTime<Utc>>, Si
     let mut time = None;
 
     loop {
-        buf.clear();
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"time" = e.name() {
@@ -117,6 +116,8 @@ fn metadata_time(reader: &mut Reader<&[u8]>) -> Result<Option<DateTime<Utc>>, Si
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
+
+        buf.clear();
     }
 }
 
@@ -164,8 +165,6 @@ fn trkpt(
     }
 
     loop {
-        buf.clear();
-
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"time" = e.name() {
@@ -204,6 +203,8 @@ fn trkpt(
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
+
+        buf.clear();
     }
 }
 
@@ -211,8 +212,6 @@ fn type_check(reader: &mut Reader<&[u8]>, filter_string: &str) -> Result<bool, S
     let mut buf = Vec::new();
 
     loop {
-        buf.clear();
-
         match reader.read_event(&mut buf) {
             Ok(Event::Text(e)) => {
                 // check that segment type matches filter
@@ -222,5 +221,7 @@ fn type_check(reader: &mut Reader<&[u8]>, filter_string: &str) -> Result<bool, S
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
+
+        buf.clear();
     }
 }
