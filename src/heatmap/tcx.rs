@@ -1,14 +1,15 @@
 use chrono::{DateTime, Utc};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
-use simple_error::{bail, SimpleError};
+use simple_error::bail;
+use std::error::Error;
 
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
     type_filter: &Option<super::ActivityType>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
-) -> Result<Vec<super::TrkPt>, SimpleError> {
+) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
     let filter_string = match type_filter {
@@ -46,24 +47,19 @@ fn parse_activity(
     filter_string: Option<&str>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
-) -> Result<Vec<super::TrkPt>, SimpleError> {
+) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
     let mut trk_pts = None;
 
     // Check if activity type matches provided filter
     if let Some(filter_string) = filter_string {
-        for attr in event.attributes().map(Result::unwrap) {
-            if let b"Sport" = attr.key {
-                if filter_string
-                    != std::str::from_utf8(
-                        &attr
-                            .unescaped_value()
-                            .expect("Error getting Sport from Activity"),
-                    )
-                    .expect("Error parsing Sport into string")
-                {
-                    return Ok(Vec::new());
+        for attr in event.attributes() {
+            if let Ok(attr) = attr {
+                if let b"Sport" = attr.key {
+                    if filter_string != std::str::from_utf8(&attr.unescaped_value()?)? {
+                        return Ok(Vec::new());
+                    }
                 }
             }
         }
@@ -98,32 +94,28 @@ fn parse_lap(
     event: &BytesStart,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
-) -> Result<Vec<super::TrkPt>, SimpleError> {
+) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
     let mut trk_pts = None;
 
     // check file time if start or end filters are set
     if start.is_some() || end.is_some() {
-        for attr in event.attributes().map(Result::unwrap) {
-            if let b"StartTime" = attr.key {
-                let time = std::str::from_utf8(
-                    &attr
-                        .unescaped_value()
-                        .expect("Error getting StartTime from Lap"),
-                )
-                .expect("Error parsing StartTime into string")
-                .parse::<DateTime<Utc>>()
-                .expect("Error parsing timestamp from StartTime");
-                // return no points if start time is before start or after end filters
-                if let Some(start) = start {
-                    if time < *start {
-                        return Ok(Vec::new());
+        for attr in event.attributes() {
+            if let Ok(attr) = attr {
+                if let b"StartTime" = attr.key {
+                    let time =
+                        std::str::from_utf8(&attr.unescaped_value()?)?.parse::<DateTime<Utc>>()?;
+                    // return no points if start time is before start or after end filters
+                    if let Some(start) = start {
+                        if time < *start {
+                            return Ok(Vec::new());
+                        }
                     }
-                }
-                if let Some(end) = end {
-                    if time > *end {
-                        return Ok(Vec::new());
+                    if let Some(end) = end {
+                        if time > *end {
+                            return Ok(Vec::new());
+                        }
                     }
                 }
             }
@@ -157,7 +149,7 @@ fn parse_lap(
 fn parse_track(
     mut reader: &mut Reader<&[u8]>,
     mut buf: &mut Vec<u8>,
-) -> Result<Vec<super::TrkPt>, SimpleError> {
+) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut trk_pts = Vec::new();
 
     loop {
@@ -187,7 +179,7 @@ fn parse_track(
 fn parse_trackpoint(
     mut reader: &mut Reader<&[u8]>,
     mut buf: &mut Vec<u8>,
-) -> Result<super::TrkPt, SimpleError> {
+) -> Result<super::TrkPt, Box<dyn Error>> {
     let mut point = None;
     let mut time = None;
 
@@ -207,14 +199,10 @@ fn parse_trackpoint(
             },
             Ok(Event::End(ref e)) => {
                 if let b"Trackpoint" = e.name() {
-                    if point.is_none() {
-                        bail!("Incomplete <Trackpoint>: {:?} {:?} ", point, time);
+                    match point {
+                        Some(center) => return Ok(super::TrkPt { center, time }),
+                        None => bail!("Incomplete <Trackpoint>: {:?} {:?} ", point, time),
                     }
-
-                    return Ok(super::TrkPt {
-                        center: point.unwrap(),
-                        time,
-                    });
                 }
             }
             Ok(Event::Eof) => bail!("Hit EOF while in <Trackpoint>"),
@@ -227,7 +215,7 @@ fn parse_trackpoint(
 fn parse_position(
     mut reader: &mut Reader<&[u8]>,
     mut buf: &mut Vec<u8>,
-) -> Result<super::Point, SimpleError> {
+) -> Result<super::Point, Box<dyn Error>> {
     let mut lat = None;
     let mut lng = None;
 
@@ -260,7 +248,10 @@ fn parse_position(
     }
 }
 
-fn parse_time(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) -> Result<DateTime<Utc>, SimpleError> {
+fn parse_time(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+) -> Result<DateTime<Utc>, Box<dyn Error>> {
     loop {
         buf.clear();
 
@@ -268,8 +259,7 @@ fn parse_time(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) -> Result<DateTime<
             Ok(Event::Text(e)) => {
                 // read and parse text value in <time>
                 return e
-                    .unescape_and_decode(&reader)
-                    .unwrap()
+                    .unescape_and_decode(&reader)?
                     .parse::<DateTime<Utc>>()
                     .or_else(|err| bail!("Error parsing timestamp from time: {}", err));
             }
@@ -285,7 +275,7 @@ fn parse_time(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) -> Result<DateTime<
     }
 }
 
-fn parse_degrees(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) -> Result<f64, SimpleError> {
+fn parse_degrees(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) -> Result<f64, Box<dyn Error>> {
     loop {
         buf.clear();
 
@@ -293,8 +283,7 @@ fn parse_degrees(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) -> Result<f64, S
             Ok(Event::Text(e)) => {
                 // read and parse text value in <LatitudeDegrees> or <LongitudeDegrees>
                 return e
-                    .unescape_and_decode(&reader)
-                    .unwrap()
+                    .unescape_and_decode(&reader)?
                     .parse::<f64>()
                     .or_else(|e| bail!("Unable to parse degrees: {}", e));
             }

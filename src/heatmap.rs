@@ -3,7 +3,8 @@ use conv::prelude::*;
 use image::{Rgb, RgbImage};
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use simple_error::{bail, SimpleError};
+use simple_error::bail;
+use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
@@ -80,7 +81,7 @@ pub fn get_pts(
     type_filter: &Option<ActivityType>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
-) -> Result<Vec<TrkPt>, SimpleError> {
+) -> Result<Vec<TrkPt>, Box<dyn Error>> {
     let mut reader = Reader::from_str(&contents);
     reader.trim_text(true);
 
@@ -134,15 +135,19 @@ pub fn get_pts_dir(
                         // only processing files, no nesting or symlinking
                         continue;
                     }
-                    let contents = fs::read_to_string(file.path()).expect("Unable to read file");
-                    // parse file into TrkPts and add them to existing vector
-                    match get_pts(&contents, type_filter, start, end) {
-                        Ok(pts) => {
-                            if !pts.is_empty() {
-                                trk_pts.push(pts);
+                    match fs::read_to_string(file.path()) {
+                        Ok(contents) => {
+                            // parse file into TrkPts and add them to existing vector
+                            match get_pts(&contents, type_filter, start, end) {
+                                Ok(pts) => {
+                                    if !pts.is_empty() {
+                                        trk_pts.push(pts);
+                                    }
+                                }
+                                Err(e) => eprintln!("Error reading {:?}\n{}", file.path(), e),
                             }
                         }
-                        Err(e) => eprintln!("Error reading {:?}\n{}", file.path(), e),
+                        Err(e) => eprintln!("Unable to read {:?}: {}", file.path(), e),
                     }
                 }
                 Err(e) => eprintln!("Error getting file type\n{}", e),

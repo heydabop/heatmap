@@ -1,14 +1,15 @@
 use chrono::{DateTime, Utc};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
-use simple_error::{bail, SimpleError};
+use simple_error::bail;
+use std::error::Error;
 
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
     type_filter: &Option<super::ActivityType>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
-) -> Result<Vec<super::TrkPt>, SimpleError> {
+) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
     let filter_string = match type_filter {
@@ -55,7 +56,7 @@ pub fn get_pts(
 fn parse_metadata(
     mut reader: &mut Reader<&[u8]>,
     mut buf: &mut Vec<u8>,
-) -> Result<Option<DateTime<Utc>>, SimpleError> {
+) -> Result<Option<DateTime<Utc>>, Box<dyn Error>> {
     let mut time = None;
 
     loop {
@@ -82,7 +83,7 @@ fn parse_metadata(
 fn parse_trkpt(
     mut reader: &mut Reader<&[u8]>,
     event: &BytesStart,
-) -> Result<Option<super::TrkPt>, SimpleError> {
+) -> Result<Option<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
     let mut lat: Option<f64> = None;
@@ -90,33 +91,13 @@ fn parse_trkpt(
     let mut time: Option<DateTime<Utc>> = None;
 
     // the <trkpt> tag has "lat" and "lon" attributes that we read and parse into floats
-    for attr in event.attributes().map(Result::unwrap) {
-        match attr.key {
-            b"lat" => {
-                lat = Some(
-                    std::str::from_utf8(
-                        &attr
-                            .unescaped_value()
-                            .expect("Error getting lat from trkpt"),
-                    )
-                    .expect("Error parsing lat into string")
-                    .parse()
-                    .expect("Error parsing f64 from lat"),
-                )
+    for attr in event.attributes() {
+        if let Ok(attr) = attr {
+            match attr.key {
+                b"lat" => lat = Some(std::str::from_utf8(&attr.unescaped_value()?)?.parse()?),
+                b"lon" => lng = Some(std::str::from_utf8(&attr.unescaped_value()?)?.parse()?),
+                _ => (),
             }
-            b"lon" => {
-                lng = Some(
-                    std::str::from_utf8(
-                        &attr
-                            .unescaped_value()
-                            .expect("Error getting lng from trkpt"),
-                    )
-                    .expect("Error parsing lng into string")
-                    .parse()
-                    .expect("Error parsing f64 from lng"),
-                )
-            }
-            _ => (),
         }
     }
 
@@ -155,7 +136,7 @@ fn parse_trk(
     mut reader: &mut Reader<&[u8]>,
     mut buf: &mut Vec<u8>,
     filter_string: Option<&str>,
-) -> Result<Vec<super::TrkPt>, SimpleError> {
+) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut trk_pts = Vec::new();
 
     loop {
@@ -188,7 +169,7 @@ fn parse_trk(
 fn parse_trkseg(
     mut reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
-) -> Result<Vec<super::TrkPt>, SimpleError> {
+) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut trk_pts = Vec::new();
 
     loop {
@@ -217,7 +198,7 @@ fn parse_trkseg(
 fn parse_time(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
-) -> Result<Option<DateTime<Utc>>, SimpleError> {
+) -> Result<Option<DateTime<Utc>>, Box<dyn Error>> {
     let mut time = None;
 
     loop {
@@ -226,12 +207,10 @@ fn parse_time(
         match reader.read_event(buf) {
             Ok(Event::Text(e)) => {
                 // read and parse text value in <time>
-                time = Some(
-                    e.unescape_and_decode(&reader)
-                        .unwrap()
-                        .parse::<DateTime<Utc>>()
-                        .expect("Error parsing timestamp from time"),
-                );
+                time = Some(match e.unescape_and_decode(&reader) {
+                    Ok(s) => s.parse::<DateTime<Utc>>()?,
+                    Err(e) => return Err(Box::new(e)),
+                });
             }
             Ok(Event::End(ref e)) => {
                 if let b"time" = e.name() {
@@ -249,14 +228,17 @@ fn type_check(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
     filter_string: &str,
-) -> Result<bool, SimpleError> {
+) -> Result<bool, Box<dyn Error>> {
     loop {
         buf.clear();
 
         match reader.read_event(buf) {
             Ok(Event::Text(e)) => {
                 // check that segment type matches filter
-                return Ok(e.unescape_and_decode(&reader).unwrap() == filter_string);
+                return Ok(match e.unescape_and_decode(&reader) {
+                    Ok(s) => s == filter_string,
+                    Err(e) => return Err(Box::new(e)),
+                });
             }
             Ok(Event::Eof) => bail!("Hit EOF while checking <type>"),
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
