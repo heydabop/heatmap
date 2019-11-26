@@ -27,14 +27,14 @@ pub fn get_pts(
             Ok(Event::Start(ref e)) => match e.name() {
                 b"metadata" => {
                     if start.is_some() || end.is_some() {
-                        if let Some(time) = metadata_time(&mut reader)? {
+                        if let Some(ref time) = metadata_time(&mut reader, &mut buf)? {
                             if let Some(start) = start {
-                                if time < *start {
+                                if time < start {
                                     return Ok(Vec::new());
                                 }
                             }
                             if let Some(end) = end {
-                                if time > *end {
+                                if time > end {
                                     return Ok(Vec::new());
                                 }
                             }
@@ -46,7 +46,7 @@ pub fn get_pts(
                 b"type" => {
                     if in_trk
                         && filter_string.is_some()
-                        && !type_check(&mut reader, filter_string.unwrap())?
+                        && !type_check(&mut reader, &mut buf, filter_string.unwrap())?
                     {
                         return Ok(Vec::new());
                     }
@@ -83,14 +83,17 @@ pub fn get_pts(
     Ok(trk_pts)
 }
 
-fn metadata_time(reader: &mut Reader<&[u8]>) -> Result<Option<DateTime<Utc>>, SimpleError> {
-    let mut buf = Vec::new();
-
+fn metadata_time(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+) -> Result<Option<DateTime<Utc>>, SimpleError> {
     let mut in_time = false; // true if we're in a <time> tag (the next event should be the Text of the tag))
     let mut time = None;
 
     loop {
-        match reader.read_event(&mut buf) {
+        buf.clear();
+
+        match reader.read_event(buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"time" = e.name() {
                     in_time = true; // mark that we're in a <time> tag and the next Text event is the start time of the gpx
@@ -116,8 +119,6 @@ fn metadata_time(reader: &mut Reader<&[u8]>) -> Result<Option<DateTime<Utc>>, Si
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
-
-        buf.clear();
     }
 }
 
@@ -208,11 +209,15 @@ fn trkpt(
     }
 }
 
-fn type_check(reader: &mut Reader<&[u8]>, filter_string: &str) -> Result<bool, SimpleError> {
-    let mut buf = Vec::new();
-
+fn type_check(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    filter_string: &str,
+) -> Result<bool, SimpleError> {
     loop {
-        match reader.read_event(&mut buf) {
+        buf.clear();
+
+        match reader.read_event(buf) {
             Ok(Event::Text(e)) => {
                 // check that segment type matches filter
                 return Ok(e.unescape_and_decode(&reader).unwrap() == filter_string);
@@ -221,7 +226,5 @@ fn type_check(reader: &mut Reader<&[u8]>, filter_string: &str) -> Result<bool, S
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
-
-        buf.clear();
     }
 }
