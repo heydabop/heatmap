@@ -601,4 +601,111 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::unreadable_literal)]
+    fn tcx() {
+        let tcx = r#"<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xsi:schemaLocation="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/TrainingCenterDatabasev2.xsd" xmlns:ns5="http://www.garmin.com/xmlschemas/ActivityGoals/v1" xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2" xmlns:ns2="http://www.garmin.com/xmlschemas/UserProfile/v2" xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+ <Activities>
+  <Activity Sport="Biking">
+   <Id>2019-11-15T21:54:00Z</Id>
+   <Lap StartTime="2019-11-15T21:54:00Z">
+    <TotalTimeSeconds>5614</TotalTimeSeconds>
+    <DistanceMeters>42651.5</DistanceMeters>
+    <MaximumSpeed>65880.0</MaximumSpeed>
+    <Calories>0</Calories>
+    <AverageHeartRateBpm>
+     <Value>161</Value>
+    </AverageHeartRateBpm>
+    <MaximumHeartRateBpm>
+     <Value>189</Value>
+    </MaximumHeartRateBpm>
+    <Intensity>Active</Intensity>
+    <TriggerMethod>Manual</TriggerMethod>
+    <Track>
+     <Trackpoint>
+      <Time>2019-11-15T22:25:38Z</Time>
+      <Position>
+       <LatitudeDegrees>30.2431060</LatitudeDegrees>
+       <LongitudeDegrees>-97.8099600</LongitudeDegrees>
+      </Position>
+      <AltitudeMeters>178.3</AltitudeMeters>
+      <DistanceMeters>15251.8</DistanceMeters>
+      <HeartRateBpm>
+       <Value>131</Value>
+      </HeartRateBpm>
+      <Extensions>
+       <TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
+        <Speed>6.6</Speed>
+       </TPX>
+      </Extensions>
+     </Trackpoint>
+     <Trackpoint>
+      <Time>2019-11-15T22:25:39Z</Time>
+      <Position>
+       <LatitudeDegrees>30.2430710</LatitudeDegrees>
+       <LongitudeDegrees>-97.8099760</LongitudeDegrees>
+      </Position>
+      <AltitudeMeters>178.1</AltitudeMeters>
+      <DistanceMeters>15257.7</DistanceMeters>
+      <HeartRateBpm>
+       <Value>130</Value>
+      </HeartRateBpm>
+      <Extensions>
+       <TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
+        <Speed>6.3</Speed>
+       </TPX>
+      </Extensions>
+     </Trackpoint>
+     <Trackpoint>
+      <Time>2019-11-15T22:25:40Z</Time>
+      <Position>
+       <LatitudeDegrees>30.2430000</LatitudeDegrees>
+       <LongitudeDegrees>-97.8100070</LongitudeDegrees>
+      </Position>
+      <AltitudeMeters>177.7</AltitudeMeters>
+      <DistanceMeters>15264.1</DistanceMeters>
+      <HeartRateBpm>
+       <Value>130</Value>
+      </HeartRateBpm>
+      <Extensions>
+       <TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
+        <Speed>6.2</Speed>
+       </TPX>
+      </Extensions>
+     </Trackpoint>
+    </Track>
+   </Lap>
+  </Activity>
+ </Activities>
+</TrainingCenterDatabase>"#;
+        assert_eq!(
+            get_pts(&tcx, &None, &None, &None).unwrap(),
+            vec![
+                TrkPt {
+                    center: Point {
+                        lat: 30.2431060,
+                        lng: -97.8099600
+                    },
+                    time: Some("2019-11-15T22:25:38Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2430710,
+                        lng: -97.8099760
+                    },
+                    time: Some("2019-11-15T22:25:39Z".parse::<DateTime<Utc>>().unwrap())
+                },
+                TrkPt {
+                    center: Point {
+                        lat: 30.2430000,
+                        lng: -97.8100070
+                    },
+                    time: Some("2019-11-15T22:25:40Z".parse::<DateTime<Utc>>().unwrap())
+                }
+            ]
+        );
+    }
 }
