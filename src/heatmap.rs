@@ -78,6 +78,8 @@ pub struct MapInfo {
 pub fn get_pts(
     contents: &str,
     type_filter: &Option<ActivityType>,
+    start: &Option<DateTime<Utc>>,
+    end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<TrkPt>, SimpleError> {
     let mut reader = Reader::from_str(&contents);
     reader.trim_text(true);
@@ -107,15 +109,21 @@ pub fn get_pts(
     };
 
     match file_type {
-        XmlType::Gpx => gpx::get_pts(reader, type_filter),
-        XmlType::Tcx => tcx::get_pts(reader, type_filter),
+        XmlType::Gpx => gpx::get_pts(reader, type_filter, start, end),
+        XmlType::Tcx => tcx::get_pts(reader, type_filter, start, end),
     }
 }
 
 #[must_use]
 /// Iterates over entires in directory and tries to parse them as gpx or tcx files if they're files.
+/// Filters by `type_filter` (only returning tracks of the given type) and start/end dates (only returning tracks that start after `start` or before `end`)
 /// Returns a vector of vectors (one per processed file) of `TrkPts` from the directory contents
-pub fn get_pts_dir(directory: &PathBuf, type_filter: &Option<ActivityType>) -> Vec<Vec<TrkPt>> {
+pub fn get_pts_dir(
+    directory: &PathBuf,
+    type_filter: &Option<ActivityType>,
+    start: &Option<DateTime<Utc>>,
+    end: &Option<DateTime<Utc>>,
+) -> Vec<Vec<TrkPt>> {
     let mut trk_pts = Vec::new();
 
     for entry in fs::read_dir(directory).expect("Error reading directory") {
@@ -128,7 +136,7 @@ pub fn get_pts_dir(directory: &PathBuf, type_filter: &Option<ActivityType>) -> V
                     }
                     let contents = fs::read_to_string(file.path()).expect("Unable to read file");
                     // parse file into TrkPts and add them to existing vector
-                    match get_pts(&contents, type_filter) {
+                    match get_pts(&contents, type_filter, start, end) {
                         Ok(pts) => {
                             if !pts.is_empty() {
                                 trk_pts.push(pts);

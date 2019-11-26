@@ -7,6 +7,8 @@ use simple_error::{bail, SimpleError};
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
     type_filter: &Option<super::ActivityType>,
+    start: &Option<DateTime<Utc>>,
+    end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<super::TrkPt>, SimpleError> {
     let mut buf = Vec::new();
 
@@ -66,6 +68,33 @@ pub fn get_pts(
                         bail!("<Lap> out of <Activity>");
                     }
                     in_lap = true;
+
+                    // check file time if start or end filters are set
+                    if start.is_some() || end.is_some() {
+                        for attr in e.attributes().map(Result::unwrap) {
+                            if let b"StartTime" = attr.key {
+                                let time = std::str::from_utf8(
+                                    &attr
+                                        .unescaped_value()
+                                        .expect("Error getting StartTime from Lap"),
+                                )
+                                .expect("Error parsing StartTime into string")
+                                .parse::<DateTime<Utc>>()
+                                .expect("Error parsing timestamp from StartTime");
+                                // return no points if start time is before start or after end filters
+                                if let Some(start) = start {
+                                    if time < *start {
+                                        return Ok(Vec::new());
+                                    }
+                                }
+                                if let Some(end) = end {
+                                    if time > *end {
+                                        return Ok(Vec::new());
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 b"Track" => {
                     if !in_lap {

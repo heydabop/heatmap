@@ -7,6 +7,8 @@ use simple_error::{bail, SimpleError};
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
     type_filter: &Option<super::ActivityType>,
+    start: &Option<DateTime<Utc>>,
+    end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<super::TrkPt>, SimpleError> {
     let mut buf = Vec::new();
 
@@ -16,6 +18,7 @@ pub fn get_pts(
         None => None,
     };
 
+    let mut in_metadata = false; // true if we're between a <metadata> and </metadata> tag
     let mut in_trk = false; // true if we're between a <trk> and </trk> tag (the bulk of the gpx file)
     let mut in_trkseg = false; // true if we're between a <trkseg> and </trkseg> tag
     let mut in_trkpt = false; // true if we're between a <trkpt> and </trkpt> tag
@@ -32,6 +35,7 @@ pub fn get_pts(
         buf.clear();
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => match e.name() {
+                b"metadata" => in_metadata = true, // mark that we're withing <metadata> </metadata>
                 b"trk" => in_trk = true, // mark that we're within <trk> </trk>, which we will be for most of the file
                 b"trkseg" => in_trkseg = true, // mark that we're within <trkseg> </trkseg>
                 b"type" => in_type = in_trk, // mark that we're within <type> in a <trk>
@@ -79,14 +83,15 @@ pub fn get_pts(
                     }
                 }
                 b"time" => {
-                    if !in_trkpt {
+                    if !in_trkpt && !in_metadata {
                         continue;
                     }
-                    in_time = true; // mark that we're in a <time> tag and the next Text event is time for our curr_trk_pt
+                    in_time = true; // mark that we're in a <time> tag and the next Text event is time for our curr_trk_pt (or the file if we're in metadata)
                 }
                 _ => (),
             },
             Ok(Event::End(ref e)) => match e.name() {
+                b"metadata" => in_metadata = false,
                 b"trk" => in_trk = false,
                 b"trkseg" => in_trkseg = false,
                 b"time" => in_time = false,
@@ -123,13 +128,29 @@ pub fn get_pts(
                     }
                 }
                 if in_time {
-                    // if we're in <time> read and parse it for the curr_trk_pt
-                    curr_time = Some(
-                        e.unescape_and_decode(&reader)
-                            .unwrap()
-                            .parse::<DateTime<Utc>>()
-                            .expect("Error parsing timestamp from time"),
-                    )
+                    // if we're in <time> read and parse it
+                    let time = e
+                        .unescape_and_decode(&reader)
+                        .unwrap()
+                        .parse::<DateTime<Utc>>()
+                        .expect("Error parsing timestamp from time");
+                    if in_metadata {
+                        // return nothing if file time is before start or after end
+                        if let Some(start) = start {
+                            if time < *start {
+                                return Ok(Vec::new());
+                            }
+                        }
+                        if let Some(end) = end {
+                            if time > *end {
+                                return Ok(Vec::new());
+                            }
+                        }
+                    }
+                    if in_trkpt {
+                        // record time for curr_trk_pt
+                        curr_time = Some(time);
+                    }
                 }
             }
             Ok(Event::Eof) => break,

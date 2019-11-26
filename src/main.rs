@@ -2,7 +2,7 @@
 
 extern crate reqwest;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use image::{png, ImageDecoder, Rgb, RgbImage};
 use std::path::PathBuf;
 use std::process::{self, Command};
@@ -29,6 +29,14 @@ struct Opt {
     #[structopt(name = "DIR", parse(from_os_str))]
     directory: PathBuf,
 
+    /// Only map tracks that started before this date
+    #[structopt(long)]
+    end: Option<String>,
+
+    /// Mapbox style used for map image
+    #[structopt(long = "style", default_value = "dark-v10")]
+    mapbox_style: String,
+
     /// Minimum opacity of any track pixel that has at least 1 track on it
     #[structopt(short, long, default_value = "0.3")]
     min: f64,
@@ -41,9 +49,9 @@ struct Opt {
     #[structopt(long)]
     run: bool,
 
-    /// Mapbox style used for map image
-    #[structopt(long = "style", default_value = "dark-v10")]
-    mapbox_style: String,
+    /// Only map tracks that started after this date
+    #[structopt(long)]
+    start: Option<String>,
 }
 
 fn main() {
@@ -68,6 +76,22 @@ fn main() {
         process::exit(1);
     }
 
+    let start = match opt.start {
+        None => None,
+        Some(start) => Some(
+            start
+                .parse::<DateTime<Utc>>()
+                .expect("Unable to parse start into date"),
+        ),
+    };
+    let end = match opt.end {
+        None => None,
+        Some(end) => Some(
+            end.parse::<DateTime<Utc>>()
+                .expect("Unable to parse end into date"),
+        ),
+    };
+
     let filter = if opt.bike {
         Some(heatmap::ActivityType::Bike)
     } else if opt.run {
@@ -76,7 +100,7 @@ fn main() {
         None
     };
 
-    let trk_pts = heatmap::get_pts_dir(&opt.directory, &filter);
+    let trk_pts = heatmap::get_pts_dir(&opt.directory, &filter, &start, &end);
 
     if trk_pts.is_empty() {
         eprintln!("No valid files loaded");
