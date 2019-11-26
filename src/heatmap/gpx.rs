@@ -1,9 +1,8 @@
 use chrono::{DateTime, Utc};
-use quick_xml::events::Event;
+use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use simple_error::{bail, SimpleError};
 
-#[allow(clippy::too_many_lines)]
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
     type_filter: &Option<super::ActivityType>,
@@ -18,24 +17,33 @@ pub fn get_pts(
         None => None,
     };
 
-    let mut in_metadata = false; // true if we're between a <metadata> and </metadata> tag
     let mut in_trk = false; // true if we're between a <trk> and </trk> tag (the bulk of the gpx file)
     let mut in_trkseg = false; // true if we're between a <trkseg> and </trkseg> tag
-    let mut in_trkpt = false; // true if we're between a <trkpt> and </trkpt> tag
-    let mut in_time = false; // true if we're in a <time> tag (the next event should be the Text of the tag))
     let mut in_type = false; // true if we're in a <type> tag that's in a <trk> block
 
     let mut trk_pts = Vec::new();
 
-    let mut curr_lat: Option<f64> = None;
-    let mut curr_lng: Option<f64> = None;
-    let mut curr_time: Option<DateTime<Utc>> = None;
-
     loop {
         buf.clear();
+
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => match e.name() {
-                b"metadata" => in_metadata = true, // mark that we're withing <metadata> </metadata>
+                b"metadata" => {
+                    if start.is_some() || end.is_some() {
+                        if let Some(time) = metadata_time(&mut reader)? {
+                            if let Some(start) = start {
+                                if time < *start {
+                                    return Ok(Vec::new());
+                                }
+                            }
+                            if let Some(end) = end {
+                                if time > *end {
+                                    return Ok(Vec::new());
+                                }
+                            }
+                        }
+                    }
+                }
                 b"trk" => in_trk = true, // mark that we're within <trk> </trk>, which we will be for most of the file
                 b"trkseg" => in_trkseg = true, // mark that we're within <trkseg> </trkseg>
                 b"type" => in_type = in_trk, // mark that we're within <type> in a <trk>
@@ -49,73 +57,16 @@ pub fn get_pts(
                         bail!("trkpt out of trkseg");
                     }
 
-                    in_trkpt = true;
-
-                    // the <trkpt> tag has "lat" and "lon" attributes that we read and parse into floats
-                    for attr in e.attributes().map(Result::unwrap) {
-                        match attr.key {
-                            b"lat" => {
-                                curr_lat = Some(
-                                    std::str::from_utf8(
-                                        &attr
-                                            .unescaped_value()
-                                            .expect("Error getting lat from trkpt"),
-                                    )
-                                    .expect("Error parsing lat into string")
-                                    .parse()
-                                    .expect("Error parsing f64 from lat"),
-                                )
-                            }
-                            b"lon" => {
-                                curr_lng = Some(
-                                    std::str::from_utf8(
-                                        &attr
-                                            .unescaped_value()
-                                            .expect("Error getting lng from trkpt"),
-                                    )
-                                    .expect("Error parsing lng into string")
-                                    .parse()
-                                    .expect("Error parsing f64 from lng"),
-                                )
-                            }
-                            _ => (),
-                        }
+                    if let Some(trkpt) = trkpt(&mut reader, e)? {
+                        trk_pts.push(trkpt);
                     }
-                }
-                b"time" => {
-                    if !in_trkpt && !in_metadata {
-                        continue;
-                    }
-                    in_time = true; // mark that we're in a <time> tag and the next Text event is time for our curr_trk_pt (or the file if we're in metadata)
                 }
                 _ => (),
             },
             Ok(Event::End(ref e)) => match e.name() {
-                b"metadata" => in_metadata = false,
                 b"trk" => in_trk = false,
                 b"trkseg" => in_trkseg = false,
-                b"time" => in_time = false,
                 b"type" => in_type = false,
-                b"trkpt" => {
-                    in_trkpt = false;
-                    if curr_lat.is_none() || curr_lng.is_none() {
-                        eprintln!(
-                            "Incomplete <Trackpoint>: {:?} {:?} {:?}",
-                            curr_lat, curr_lng, curr_time
-                        );
-                        curr_time = None;
-                        curr_lat = None;
-                        curr_lng = None;
-                        continue;
-                    }
-                    trk_pts.push(super::TrkPt {
-                        center: super::Point {
-                            lat: curr_lat.take().unwrap(),
-                            lng: curr_lng.take().unwrap(),
-                        },
-                        time: curr_time.take(),
-                    });
-                }
                 _ => (),
             },
             Ok(Event::Text(e)) => {
@@ -127,31 +78,6 @@ pub fn get_pts(
                         }
                     }
                 }
-                if in_time {
-                    // if we're in <time> read and parse it
-                    let time = e
-                        .unescape_and_decode(&reader)
-                        .unwrap()
-                        .parse::<DateTime<Utc>>()
-                        .expect("Error parsing timestamp from time");
-                    if in_metadata {
-                        // return nothing if file time is before start or after end
-                        if let Some(start) = start {
-                            if time < *start {
-                                return Ok(Vec::new());
-                            }
-                        }
-                        if let Some(end) = end {
-                            if time > *end {
-                                return Ok(Vec::new());
-                            }
-                        }
-                    }
-                    if in_trkpt {
-                        // record time for curr_trk_pt
-                        curr_time = Some(time);
-                    }
-                }
             }
             Ok(Event::Eof) => break,
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
@@ -160,4 +86,128 @@ pub fn get_pts(
     }
 
     Ok(trk_pts)
+}
+
+fn metadata_time(reader: &mut Reader<&[u8]>) -> Result<Option<DateTime<Utc>>, SimpleError> {
+    let mut buf = Vec::new();
+
+    let mut in_time = false; // true if we're in a <time> tag (the next event should be the Text of the tag))
+    let mut time = None;
+
+    loop {
+        buf.clear();
+        match reader.read_event(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                if let b"time" = e.name() {
+                    in_time = true; // mark that we're in a <time> tag and the next Text event is the start time of the gpx
+                }
+            }
+            Ok(Event::End(ref e)) => match e.name() {
+                b"metadata" => return Ok(time),
+                b"time" => in_time = false,
+                _ => (),
+            },
+            Ok(Event::Text(e)) => {
+                if in_time {
+                    // if we're in <time> read and parse it
+                    time = Some(
+                        e.unescape_and_decode(&reader)
+                            .unwrap()
+                            .parse::<DateTime<Utc>>()
+                            .expect("Error parsing timestamp from time"),
+                    );
+                }
+            }
+            Ok(Event::Eof) => bail!("Hit EOF while getting time from <metadata>"),
+            Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
+            _ => (),
+        }
+    }
+}
+
+fn trkpt(
+    reader: &mut Reader<&[u8]>,
+    event: &BytesStart,
+) -> Result<Option<super::TrkPt>, SimpleError> {
+    let mut buf = Vec::new();
+
+    let mut in_time = false; // true if we're in a <time> tag (the next event should be the Text of the tag))
+
+    let mut lat: Option<f64> = None;
+    let mut lng: Option<f64> = None;
+    let mut time: Option<DateTime<Utc>> = None;
+
+    // the <trkpt> tag has "lat" and "lon" attributes that we read and parse into floats
+    for attr in event.attributes().map(Result::unwrap) {
+        match attr.key {
+            b"lat" => {
+                lat = Some(
+                    std::str::from_utf8(
+                        &attr
+                            .unescaped_value()
+                            .expect("Error getting lat from trkpt"),
+                    )
+                    .expect("Error parsing lat into string")
+                    .parse()
+                    .expect("Error parsing f64 from lat"),
+                )
+            }
+            b"lon" => {
+                lng = Some(
+                    std::str::from_utf8(
+                        &attr
+                            .unescaped_value()
+                            .expect("Error getting lng from trkpt"),
+                    )
+                    .expect("Error parsing lng into string")
+                    .parse()
+                    .expect("Error parsing f64 from lng"),
+                )
+            }
+            _ => (),
+        }
+    }
+
+    loop {
+        buf.clear();
+
+        match reader.read_event(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                if let b"time" = e.name() {
+                    in_time = true; // mark that we're in a <time> tag and the next Text event is time for our trk_pt
+                }
+            }
+            Ok(Event::End(ref e)) => match e.name() {
+                b"time" => in_time = false,
+                b"trkpt" => {
+                    if lat.is_none() || lng.is_none() {
+                        eprintln!("Incomplete <Trackpoint>: {:?} {:?} {:?}", lat, lng, time);
+                        return Ok(None);
+                    }
+                    return Ok(Some(super::TrkPt {
+                        center: super::Point {
+                            lat: lat.unwrap(),
+                            lng: lng.unwrap(),
+                        },
+                        time,
+                    }));
+                }
+                _ => (),
+            },
+            Ok(Event::Text(e)) => {
+                if in_time {
+                    // if we're in <time> read and parse it for trk_pt
+                    time = Some(
+                        e.unescape_and_decode(&reader)
+                            .unwrap()
+                            .parse::<DateTime<Utc>>()
+                            .expect("Error parsing timestamp from time"),
+                    );
+                }
+            }
+            Ok(Event::Eof) => bail!("Hit EOF while getting data from <trkpt>"),
+            Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
+            _ => (),
+        }
+    }
 }
