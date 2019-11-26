@@ -155,6 +155,30 @@ pub fn get_pts_dir(
 }
 
 #[must_use]
+/// Returns two points that are comprised of the lowest latitude and lowest longitude and highest latitude and highest longitude within `pts`.
+/// Note that these values are all considered independently and not as a point, so an input of [[35, 77], [33, 78]] would return ([33, 77], [35, 78]), meaning the output points may not exist in the input.
+pub fn min_max(pts: &[Vec<TrkPt>]) -> (Point, Point) {
+    let mut min = Point {
+        lat: 90.0,
+        lng: 180.0,
+    };
+    let mut max = Point {
+        lat: -90.0,
+        lng: -180.0,
+    };
+    for v in pts {
+        for pt in v {
+            max.lat = max.lat.max(pt.center.lat);
+            min.lat = min.lat.min(pt.center.lat);
+            max.lng = max.lng.max(pt.center.lng);
+            min.lng = min.lng.min(pt.center.lng);
+        }
+    }
+
+    (min, max)
+}
+
+#[must_use]
 /// Computes great-circle distance between p1 and p2
 pub fn haversine(p1: &Point, p2: &Point) -> f64 {
     let lat_rad_1 = p1.lat.to_radians();
@@ -369,6 +393,7 @@ pub fn overlay_image(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64;
 
     #[test]
     fn haversine_test() {
@@ -380,7 +405,7 @@ mod tests {
             lat: 38.1345,
             lng: -89.6150,
         };
-        assert!((haversine(&p1, &p2) - 1_242_682.405_520_137_2).abs() < std::f64::EPSILON);
+        assert!((haversine(&p1, &p2) - 1_242_682.405_520_137_2).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -393,8 +418,76 @@ mod tests {
             0.0,
             300.0,
         );
-        assert!((dest.lat - 30.346_585_964_817_75).abs() < std::f64::EPSILON);
-        assert!((dest.lng - -103.9701).abs() < std::f64::EPSILON);
+        assert!((dest.lat - 30.346_585_964_817_75).abs() < f64::EPSILON);
+        assert!((dest.lng - -103.9701).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::unreadable_literal)]
+    fn min_max_test() {
+        let (min, max) = min_max(&[vec![
+            TrkPt {
+                center: Point {
+                    lat: 30.2430140,
+                    lng: -97.8100270,
+                },
+                time: None,
+            },
+            TrkPt {
+                center: Point {
+                    lat: 30.2429950,
+                    lng: -97.8100160,
+                },
+                time: None,
+            },
+            TrkPt {
+                center: Point {
+                    lat: 30.2428630,
+                    lng: -97.8101550,
+                },
+                time: None,
+            },
+            TrkPt {
+                center: Point {
+                    lat: 30.2428470,
+                    lng: -97.8102190,
+                },
+                time: None,
+            },
+            TrkPt {
+                center: Point {
+                    lat: 30.2428310,
+                    lng: -97.8102830,
+                },
+                time: None,
+            },
+            TrkPt {
+                center: Point {
+                    lat: 30.2427670,
+                    lng: -97.8105240,
+                },
+                time: None,
+            },
+            TrkPt {
+                center: Point {
+                    lat: 30.2427500,
+                    lng: -97.8105730,
+                },
+                time: None,
+            },
+            TrkPt {
+                center: Point {
+                    lat: 30.2427330,
+                    lng: -97.8106130,
+                },
+                time: None,
+            },
+        ]]);
+        assert!((min.lat - 30.2427330).abs() < f64::EPSILON);
+        assert!((min.lng + 97.8106130).abs() < f64::EPSILON);
+        assert!((max.lat - 30.2430140).abs() < f64::EPSILON);
+        assert!((max.lng + 97.8100160).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -447,7 +540,7 @@ mod tests {
 </gpx>
 "#;
         assert_eq!(
-            get_pts(&gpx, &None).unwrap(),
+            get_pts(&gpx, &None, &None, &None).unwrap(),
             vec![
                 TrkPt {
                     center: Point {

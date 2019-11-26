@@ -108,22 +108,7 @@ fn main() {
     }
 
     // calculate min and max points
-    let mut min = heatmap::Point {
-        lat: 90.0,
-        lng: 180.0,
-    };
-    let mut max = heatmap::Point {
-        lat: -90.0,
-        lng: -180.0,
-    };
-    for v in &trk_pts {
-        for pt in v {
-            max.lat = max.lat.max(pt.center.lat);
-            min.lat = min.lat.min(pt.center.lat);
-            max.lng = max.lng.max(pt.center.lng);
-            min.lng = min.lng.min(pt.center.lng);
-        }
-    }
+    let (min, max) = heatmap::min_max(&trk_pts);
 
     let pixels = 1280;
     let map_info = heatmap::calculate_map(pixels, &min, &max, 2.0);
