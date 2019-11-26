@@ -19,7 +19,6 @@ pub fn get_pts(
 
     let mut in_trk = false; // true if we're between a <trk> and </trk> tag (the bulk of the gpx file)
     let mut in_trkseg = false; // true if we're between a <trkseg> and </trkseg> tag
-    let mut in_type = false; // true if we're in a <type> tag that's in a <trk> block
 
     let mut trk_pts = Vec::new();
 
@@ -46,7 +45,14 @@ pub fn get_pts(
                 }
                 b"trk" => in_trk = true, // mark that we're within <trk> </trk>, which we will be for most of the file
                 b"trkseg" => in_trkseg = true, // mark that we're within <trkseg> </trkseg>
-                b"type" => in_type = in_trk, // mark that we're within <type> in a <trk>
+                b"type" => {
+                    if in_trk
+                        && filter_string.is_some()
+                        && !type_check(&mut reader, filter_string.unwrap())?
+                    {
+                        return Ok(Vec::new());
+                    }
+                }
                 b"trkpt" => {
                     if !in_trk {
                         // we could ignore a <trkpt> outside of <trk> but this seems malformed so we error out
@@ -66,19 +72,8 @@ pub fn get_pts(
             Ok(Event::End(ref e)) => match e.name() {
                 b"trk" => in_trk = false,
                 b"trkseg" => in_trkseg = false,
-                b"type" => in_type = false,
                 _ => (),
             },
-            Ok(Event::Text(e)) => {
-                if in_type {
-                    if let Some(filter_string) = filter_string {
-                        // if we're in <type> and we have a set filter, check that this segment matches that filter, otherwise return nothing
-                        if e.unescape_and_decode(&reader).unwrap() != filter_string {
-                            return Ok(Vec::new());
-                        }
-                    }
-                }
-            }
             Ok(Event::Eof) => break,
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
@@ -206,6 +201,24 @@ fn trkpt(
                 }
             }
             Ok(Event::Eof) => bail!("Hit EOF while getting data from <trkpt>"),
+            Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
+            _ => (),
+        }
+    }
+}
+
+fn type_check(reader: &mut Reader<&[u8]>, filter_string: &str) -> Result<bool, SimpleError> {
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+
+        match reader.read_event(&mut buf) {
+            Ok(Event::Text(e)) => {
+                // check that segment type matches filter
+                return Ok(e.unescape_and_decode(&reader).unwrap() == filter_string);
+            }
+            Ok(Event::Eof) => bail!("Hit EOF while checking <type>"),
             Err(e) => bail!("Error at position {}: {:?}", reader.buffer_position(), e),
             _ => (),
         }
