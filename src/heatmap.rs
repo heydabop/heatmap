@@ -396,6 +396,7 @@ mod tests {
     use std::f64;
 
     #[test]
+    #[allow(clippy::unreadable_literal)]
     fn haversine_test() {
         let p1 = Point {
             lat: 31.2626,
@@ -405,20 +406,21 @@ mod tests {
             lat: 38.1345,
             lng: -89.6150,
         };
-        assert!((haversine(&p1, &p2) - 1_242_682.405_520_137_2).abs() < f64::EPSILON);
+        assert!((haversine(&p1, &p2) - 1242682.4055201372).abs() < f64::EPSILON);
     }
 
     #[test]
+    #[allow(clippy::unreadable_literal)]
     fn destination_test() {
         let dest = destination(
             &Point {
-                lat: 30.343_888,
-                lng: -103.970_1,
+                lat: 30.343888,
+                lng: -103.9701,
             },
             0.0,
             300.0,
         );
-        assert!((dest.lat - 30.346_585_964_817_75).abs() < f64::EPSILON);
+        assert!((dest.lat - 30.34658596481775).abs() < f64::EPSILON);
         assert!((dest.lng - -103.9701).abs() < f64::EPSILON);
     }
 
