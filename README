@@ -1,1 +1,1 @@
-Overlays a MapBox static image with a "heatmap" of GPX tracks from a directory of .gpx files.
+Overlays a MapBox static image with a "heatmap" of GPX and TCX tracks from a directory of .gpx and .tcx files.
