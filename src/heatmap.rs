@@ -116,6 +116,58 @@ pub fn get_pts(
 }
 
 #[must_use]
+/// Iterates over paths in `file_list` and tries to parse files or files in directories as gpx/tcx files
+/// Filters by `type_filter` (only returning tracks of the given type) and start/end dates (only returning tracks that start after `start` or before `end`)
+/// Returns a vector of vectors (one per processed file) of `TrkPts`
+pub fn get_pts_from_files(
+    file_list: &[PathBuf],
+    type_filter: &Option<ActivityType>,
+    start: &Option<DateTime<Utc>>,
+    end: &Option<DateTime<Utc>>,
+) -> Vec<Vec<TrkPt>> {
+    let mut trk_pts = Vec::new();
+
+    for path in file_list.iter() {
+        match fs::metadata(path) {
+            Ok(meta) => {
+                let f_type = meta.file_type();
+                if f_type.is_file() {
+                    match get_pts_file(path, type_filter, start, end) {
+                        Ok(pts) => {
+                            if !pts.is_empty() {
+                                trk_pts.push(pts);
+                            }
+                        }
+                        Err(e) => eprintln!("Error reading {:?}: {}", path, e),
+                    }
+                } else if f_type.is_dir() {
+                    let mut dir_pts = get_pts_dir(path, type_filter, start, end);
+                    trk_pts.append(&mut dir_pts);
+                } else {
+                    eprintln!("Unable to read {:?}", path);
+                }
+            }
+            Err(e) => eprintln!("Error stating {:?}: {}", path, e),
+        }
+    }
+
+    trk_pts
+}
+
+/// Attempts to parse `file` as gpx or tcx file and read it into `TrkPt`s
+/// Filters by `type_filter` (only returning tracks of the given type) and start/end dates (only returning tracks that start after `start` or before `end`)
+/// Returns a vector of `TrkPts` of the waypoints in the file
+pub fn get_pts_file(
+    file: &PathBuf,
+    type_filter: &Option<ActivityType>,
+    start: &Option<DateTime<Utc>>,
+    end: &Option<DateTime<Utc>>,
+) -> Result<Vec<TrkPt>, Box<dyn Error>> {
+    let contents = fs::read_to_string(file)?;
+    get_pts(&contents, type_filter, start, end)
+}
+
+#[must_use]
 /// Iterates over entires in directory and tries to parse them as gpx or tcx files if they're files.
 /// Filters by `type_filter` (only returning tracks of the given type) and start/end dates (only returning tracks that start after `start` or before `end`)
 /// Returns a vector of vectors (one per processed file) of `TrkPts` from the directory contents
@@ -125,38 +177,16 @@ pub fn get_pts_dir(
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Vec<Vec<TrkPt>> {
-    let mut trk_pts = Vec::new();
+    let mut file_list = Vec::new();
 
     for entry in fs::read_dir(directory).expect("Error reading directory") {
         match entry {
-            Ok(file) => match file.file_type() {
-                Ok(f_type) => {
-                    if !f_type.is_file() {
-                        // only processing files, no nesting or symlinking
-                        continue;
-                    }
-                    match fs::read_to_string(file.path()) {
-                        Ok(contents) => {
-                            // parse file into TrkPts and add them to existing vector
-                            match get_pts(&contents, type_filter, start, end) {
-                                Ok(pts) => {
-                                    if !pts.is_empty() {
-                                        trk_pts.push(pts);
-                                    }
-                                }
-                                Err(e) => eprintln!("Error reading {:?}\n{}", file.path(), e),
-                            }
-                        }
-                        Err(e) => eprintln!("Unable to read {:?}: {}", file.path(), e),
-                    }
-                }
-                Err(e) => eprintln!("Error getting file type\n{}", e),
-            },
-            Err(e) => eprintln!("Error reading directory entry\n{}", e),
+            Ok(file) => file_list.push(file.path()),
+            Err(e) => eprintln!("Error reading directory entry: {}", e),
         }
     }
 
-    trk_pts
+    get_pts_from_files(&file_list, type_filter, start, end)
 }
 
 #[must_use]

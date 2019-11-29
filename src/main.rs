@@ -25,9 +25,9 @@ struct Opt {
     #[structopt(short, long, default_value = "0,255,0")]
     color: String,
 
-    /// Directory containing .gpx files
-    #[structopt(name = "DIR", parse(from_os_str))]
-    directory: PathBuf,
+    /// Input GPX/TCX files and directories
+    #[structopt(name = "file list", parse(from_os_str))]
+    file_list: Vec<PathBuf>,
 
     /// Only map tracks that started before this date
     #[structopt(long)]
@@ -100,7 +100,7 @@ fn main() {
         None
     };
 
-    let trk_pts = heatmap::get_pts_dir(&opt.directory, &filter, &start, &end);
+    let trk_pts = heatmap::get_pts_from_files(&opt.file_list, &filter, &start, &end);
 
     if trk_pts.is_empty() {
         eprintln!("No valid files loaded");
