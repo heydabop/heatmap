@@ -71,8 +71,8 @@ fn main() {
         process::exit(1);
     }
 
-    if opt.ratio < 0.0 || opt.ratio > 1.0 {
-        eprintln!("ratio must be between 0 and 1");
+    if opt.ratio <= 0.0 {
+        eprintln!("ratio must be greater than 0");
         process::exit(1);
     }
 
