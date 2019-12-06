@@ -25,6 +25,10 @@ struct Opt {
     #[structopt(short, long, default_value = "0,255,0")]
     color: String,
 
+    /// Factor used in calculating heatmap pixel opacity (higher values will result in more opaque pixels)
+    #[structopt(short, long, default_value = "1")]
+    factor: f64,
+
     /// Input GPX/TCX files and directories
     #[structopt(name = "file list", parse(from_os_str))]
     file_list: Vec<PathBuf>,
@@ -38,12 +42,8 @@ struct Opt {
     mapbox_style: String,
 
     /// Minimum opacity of any track pixel that has at least 1 track on it
-    #[structopt(short, long, default_value = "0.3")]
+    #[structopt(short, long, default_value = "0.25")]
     min: f64,
-
-    /// Ratio of tracks a pixel has to be part of to become opaque (higher values will result in more transparent tracks)
-    #[structopt(short, long, default_value = "0.125")]
-    ratio: f64,
 
     /// Only map running tracks (overridden by --bike)
     #[structopt(long)]
@@ -71,8 +71,8 @@ fn main() {
         process::exit(1);
     }
 
-    if opt.ratio <= 0.0 {
-        eprintln!("ratio must be greater than 0");
+    if opt.factor <= 0.0 {
+        eprintln!("factor must be greater than 0");
         process::exit(1);
     }
 
@@ -146,7 +146,7 @@ fn main() {
         &map_info,
         &trk_pts,
         Rgb([color[0], color[1], color[2]]),
-        opt.ratio,
+        opt.factor,
         opt.min,
     );
 

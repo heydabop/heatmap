@@ -299,13 +299,13 @@ pub fn calculate_map(pixels: u32, min: &Point, max: &Point, scale_multiplier: f6
 
 #[must_use]
 /// Overlays dots with color `track_color` from `trk_pts` on `map_image` using scaling information in `map_info`
-/// `ratio` (between 0 and 1) is the ratio of tracks a pixel must be part of before it's opaque (higher values = more transparent tracks)
+/// `factor` is the multiplier of a mapped pixels opacity (the pixel opacity of the track layer is `factor` / 75th percentile of number of tracks greater than 1 on all pixels)
 pub fn overlay_image(
     mut map_image: RgbImage,
     map_info: &MapInfo,
     trk_pts: &[Vec<TrkPt>],
     track_color: Rgb<u8>,
-    ratio: f64,
+    factor: f64,
     min_alpha: f64,
 ) -> RgbImage {
     let trks = trk_pts.len();
@@ -315,12 +315,6 @@ pub fn overlay_image(
     // count of how many times a pixel is part of a track, will be multiplied by single step and capped to 2 during compositing
     #[allow(clippy::cast_sign_loss)]
     let mut factors = vec![vec![0; width as usize]; height as usize];
-    let single_step = (ratio
-        * f64::value_from(trks).expect(
-            "trks is too large to be represented as an f64; giving up on gradual heatmap stepping",
-        ))
-    .recip();
-    println!("Tracks: {} -- Step: {:.2}", trks, single_step);
 
     // used to clamp dots (and neighbors) from going beyond image bounds
     let max_x = width - 2;
@@ -394,10 +388,27 @@ pub fn overlay_image(
         }
     }
 
+    #[allow(clippy::cast_sign_loss)]
+    let mut sorted = Vec::with_capacity(width as usize * height as usize);
+
+    for row in &factors {
+        for &factor in row.iter() {
+            if factor > 1 {
+                sorted.push(factor);
+            }
+        }
+    }
+
+    sorted.sort_unstable();
+
+    // Take 75th percentile data point so that the top 25% "densest" pixels are all max alpha
+    let single_step = factor / f64::from(sorted[sorted.len() / 4 * 3]);
+    println!("Tracks: {} -- Step: {:.2}", trks, single_step);
+
     // composit path_image onto map_image
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
-    for (x, row) in factors.iter().enumerate() {
+    for (x, ref row) in factors.iter().enumerate() {
         for (y, &factor) in row.iter().enumerate() {
             let intensity = f64::from(factor) * single_step;
             if intensity > 0.0 {
