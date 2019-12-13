@@ -28,6 +28,7 @@ enum XmlType {
 pub enum ActivityType {
     Bike,
     Run,
+    Walk,
 }
 
 impl fmt::Debug for Point {

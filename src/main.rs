@@ -17,7 +17,7 @@ struct Opt {
     #[structopt(short = "t", long = "token")]
     access_token: String,
 
-    /// Only mape biking tracks
+    /// Only map biking tracks
     #[structopt(long)]
     bike: bool,
 
@@ -45,13 +45,17 @@ struct Opt {
     #[structopt(short, long, default_value = "0.25")]
     min: f64,
 
-    /// Only map running tracks (overridden by --bike)
+    /// Only map running tracks
     #[structopt(long)]
     run: bool,
 
     /// Only map tracks that started after this date
     #[structopt(long)]
     start: Option<String>,
+
+    /// Only map walking tracks
+    #[structopt(long)]
+    walk: bool,
 }
 
 fn main() {
@@ -96,6 +100,8 @@ fn main() {
         Some(heatmap::ActivityType::Bike)
     } else if opt.run {
         Some(heatmap::ActivityType::Run)
+    } else if opt.walk {
+        Some(heatmap::ActivityType::Walk)
     } else {
         None
     };

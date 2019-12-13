@@ -15,6 +15,7 @@ pub fn get_pts(
     let filter_string = match type_filter {
         Some(super::ActivityType::Bike) => Some("1"),
         Some(super::ActivityType::Run) => Some("9"),
+        Some(super::ActivityType::Walk) => Some("10"),
         None => None,
     };
 
