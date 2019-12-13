@@ -6,16 +6,22 @@ use std::error::Error;
 
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
-    type_filter: &Option<super::ActivityType>,
+    type_filters: &Option<Vec<super::ActivityType>>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
-    let filter_string = match type_filter {
-        Some(super::ActivityType::Bike) => Some("1"),
-        Some(super::ActivityType::Run) => Some("9"),
-        Some(super::ActivityType::Walk) => Some("10"),
+    let filter_strings = match type_filters {
+        Some(fs) => Some(
+            fs.iter()
+                .map(|f| match f {
+                    super::ActivityType::Bike => "1",
+                    super::ActivityType::Run => "9",
+                    super::ActivityType::Walk => "10",
+                })
+                .collect(),
+        ),
         None => None,
     };
 
@@ -40,7 +46,7 @@ pub fn get_pts(
                         }
                     }
                 }
-                b"trk" => trk_pts = parse_trk(&mut reader, &mut buf, filter_string)?,
+                b"trk" => trk_pts = parse_trk(&mut reader, &mut buf, &filter_strings)?,
                 _ => (),
             },
             Ok(Event::Eof) => break,
@@ -136,7 +142,7 @@ fn parse_trkpt(
 fn parse_trk(
     mut reader: &mut Reader<&[u8]>,
     mut buf: &mut Vec<u8>,
-    filter_string: Option<&str>,
+    filter_strings: &Option<Vec<&str>>,
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut trk_pts = Vec::new();
 
@@ -147,8 +153,8 @@ fn parse_trk(
             Ok(Event::Start(ref e)) => match e.name() {
                 b"trkseg" => trk_pts = parse_trkseg(&mut reader, &mut buf)?,
                 b"type" => {
-                    if filter_string.is_some()
-                        && !type_check(&mut reader, &mut buf, filter_string.unwrap())?
+                    if filter_strings.is_some()
+                        && !type_check(&mut reader, &mut buf, filter_strings.as_ref().unwrap())?
                     {
                         return Ok(Vec::new());
                     }
@@ -228,7 +234,7 @@ fn parse_time(
 fn type_check(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
-    filter_string: &str,
+    filter_strings: &[&str],
 ) -> Result<bool, Box<dyn Error>> {
     loop {
         buf.clear();
@@ -237,7 +243,7 @@ fn type_check(
             Ok(Event::Text(e)) => {
                 // check that segment type matches filter
                 return Ok(match e.unescape_and_decode(&reader) {
-                    Ok(s) => s == filter_string,
+                    Ok(s) => filter_strings.contains(&&s[..]),
                     Err(e) => return Err(Box::new(e)),
                 });
             }

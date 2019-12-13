@@ -17,7 +17,7 @@ struct Opt {
     #[structopt(short = "t", long = "token")]
     access_token: String,
 
-    /// Only map biking tracks
+    /// Map biking tracks
     #[structopt(long)]
     bike: bool,
 
@@ -45,7 +45,7 @@ struct Opt {
     #[structopt(short, long, default_value = "0.25")]
     min: f64,
 
-    /// Only map running tracks
+    /// Map running tracks
     #[structopt(long)]
     run: bool,
 
@@ -53,7 +53,7 @@ struct Opt {
     #[structopt(long)]
     start: Option<String>,
 
-    /// Only map walking tracks
+    /// Map walking tracks
     #[structopt(long)]
     walk: bool,
 }
@@ -96,17 +96,23 @@ fn main() {
         ),
     };
 
-    let filter = if opt.bike {
-        Some(heatmap::ActivityType::Bike)
-    } else if opt.run {
-        Some(heatmap::ActivityType::Run)
-    } else if opt.walk {
-        Some(heatmap::ActivityType::Walk)
+    let filters = if opt.bike || opt.run || opt.walk {
+        let mut filters = Vec::new();
+        if opt.bike {
+            filters.push(heatmap::ActivityType::Bike);
+        }
+        if opt.run {
+            filters.push(heatmap::ActivityType::Run);
+        }
+        if opt.walk {
+            filters.push(heatmap::ActivityType::Walk);
+        }
+        Some(filters)
     } else {
         None
     };
 
-    let trk_pts = heatmap::get_pts_from_files(&opt.file_list, &filter, &start, &end);
+    let trk_pts = heatmap::get_pts_from_files(&opt.file_list, &filters, &start, &end);
 
     if trk_pts.is_empty() {
         eprintln!("No valid files loaded");

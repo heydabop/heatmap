@@ -79,7 +79,7 @@ pub struct MapInfo {
 /// Parses trkpt's from gpx or tcx file into vector
 pub fn get_pts(
     contents: &str,
-    type_filter: &Option<ActivityType>,
+    type_filters: &Option<Vec<ActivityType>>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<TrkPt>, Box<dyn Error>> {
@@ -111,8 +111,8 @@ pub fn get_pts(
     };
 
     match file_type {
-        XmlType::Gpx => gpx::get_pts(reader, type_filter, start, end),
-        XmlType::Tcx => tcx::get_pts(reader, type_filter, start, end),
+        XmlType::Gpx => gpx::get_pts(reader, type_filters, start, end),
+        XmlType::Tcx => tcx::get_pts(reader, type_filters, start, end),
     }
 }
 
@@ -122,7 +122,7 @@ pub fn get_pts(
 /// Returns a vector of vectors (one per processed file) of `TrkPts`
 pub fn get_pts_from_files(
     file_list: &[PathBuf],
-    type_filter: &Option<ActivityType>,
+    type_filters: &Option<Vec<ActivityType>>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Vec<Vec<TrkPt>> {
@@ -133,7 +133,7 @@ pub fn get_pts_from_files(
             Ok(meta) => {
                 let f_type = meta.file_type();
                 if f_type.is_file() {
-                    match get_pts_file(path, type_filter, start, end) {
+                    match get_pts_file(path, type_filters, start, end) {
                         Ok(pts) => {
                             if !pts.is_empty() {
                                 trk_pts.push(pts);
@@ -142,7 +142,7 @@ pub fn get_pts_from_files(
                         Err(e) => eprintln!("Error reading {:?}: {}", path, e),
                     }
                 } else if f_type.is_dir() {
-                    let mut dir_pts = get_pts_dir(path, type_filter, start, end);
+                    let mut dir_pts = get_pts_dir(path, type_filters, start, end);
                     trk_pts.append(&mut dir_pts);
                 } else {
                     eprintln!("Unable to read {:?}", path);
@@ -160,12 +160,12 @@ pub fn get_pts_from_files(
 /// Returns a vector of `TrkPts` of the waypoints in the file
 pub fn get_pts_file(
     file: &PathBuf,
-    type_filter: &Option<ActivityType>,
+    type_filters: &Option<Vec<ActivityType>>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<TrkPt>, Box<dyn Error>> {
     let contents = fs::read_to_string(file)?;
-    get_pts(&contents, type_filter, start, end)
+    get_pts(&contents, type_filters, start, end)
 }
 
 #[must_use]
@@ -174,7 +174,7 @@ pub fn get_pts_file(
 /// Returns a vector of vectors (one per processed file) of `TrkPts` from the directory contents
 pub fn get_pts_dir(
     directory: &PathBuf,
-    type_filter: &Option<ActivityType>,
+    type_filters: &Option<Vec<ActivityType>>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Vec<Vec<TrkPt>> {
@@ -187,7 +187,7 @@ pub fn get_pts_dir(
         }
     }
 
-    get_pts_from_files(&file_list, type_filter, start, end)
+    get_pts_from_files(&file_list, type_filters, start, end)
 }
 
 #[must_use]

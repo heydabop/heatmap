@@ -6,16 +6,22 @@ use std::error::Error;
 
 pub fn get_pts(
     mut reader: Reader<&[u8]>,
-    type_filter: &Option<super::ActivityType>,
+    type_filters: &Option<Vec<super::ActivityType>>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
-    let filter_string = match type_filter {
-        Some(super::ActivityType::Bike) => Some("Biking"),
-        Some(super::ActivityType::Run) => Some("Running"),
-        Some(super::ActivityType::Walk) => Some("Other"),
+    let filter_strings = match type_filters {
+        Some(fs) => Some(
+            fs.iter()
+                .map(|f| match f {
+                    super::ActivityType::Bike => "Biking",
+                    super::ActivityType::Run => "Running",
+                    super::ActivityType::Walk => "Other",
+                })
+                .collect(),
+        ),
         None => None,
     };
 
@@ -27,7 +33,13 @@ pub fn get_pts(
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"Activity" = e.name() {
-                    trk_pts = Some(parse_activity(&mut reader, &e, filter_string, start, end)?);
+                    trk_pts = Some(parse_activity(
+                        &mut reader,
+                        &e,
+                        filter_strings.as_ref(),
+                        start,
+                        end,
+                    )?);
                 }
             }
             Ok(Event::Eof) => break,
@@ -45,7 +57,7 @@ pub fn get_pts(
 fn parse_activity(
     mut reader: &mut Reader<&[u8]>,
     event: &BytesStart,
-    filter_string: Option<&str>,
+    filter_strings: Option<&Vec<&str>>,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
@@ -54,11 +66,13 @@ fn parse_activity(
     let mut trk_pts = None;
 
     // Check if activity type matches provided filter
-    if let Some(filter_string) = filter_string {
+    if let Some(filter_strings) = filter_strings {
         for attr in event.attributes() {
             if let Ok(attr) = attr {
                 if let b"Sport" = attr.key {
-                    if filter_string != std::str::from_utf8(&attr.unescaped_value()?)? {
+                    let sport = &attr.unescaped_value()?;
+                    let sport = std::str::from_utf8(sport)?;
+                    if !filter_strings.contains(&&sport[..]) {
                         return Ok(Vec::new());
                     }
                 }
