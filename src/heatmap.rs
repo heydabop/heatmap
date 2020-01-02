@@ -345,10 +345,10 @@ pub fn overlay_image(
                     continue;
                 }
 
-                // dont draw a line between points that are more than 10 seconds apart
+                // dont draw a line between points that are more than 5 seconds apart
                 if pt.time.is_none()
                     || prev_time.is_none()
-                    || (pt.time.unwrap() - prev_time.unwrap()).num_seconds().abs() <= 10
+                    || (pt.time.unwrap() - prev_time.unwrap()).num_seconds().abs() <= 5
                 {
                     let (x1, y1, x2, y2) = if prev_x >= x {
                         (x, y, prev_x, prev_y)
