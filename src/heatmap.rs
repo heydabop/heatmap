@@ -331,8 +331,6 @@ pub fn overlay_image(
             let x = ((pt.center.lng - map_info.min.lng) * map_info.scale.lng).round() as i32;
             let y = ((pt.center.lat - map_info.min.lat) * map_info.scale.lat).round() as i32;
             if x < 1 || x > max_x || y < 1 || y > max_y {
-                // maybe a problem with my code, maybe a problem with the gpx/tcx?
-                eprintln!("Pixel {}, {} out of range", x, y);
                 continue;
             }
 

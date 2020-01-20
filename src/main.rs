@@ -17,6 +17,10 @@ struct Opt {
     #[structopt(short = "t", long = "token")]
     access_token: String,
 
+    /// Minimum bounding box of generated map (instead of map growing to fit all points) as the decimal latitude & longitude of the northeast and southwest corners. e.g.: 40.799235,-73.943158,40.763277,-73.985393 (NElat,NElon,SWlat,SWlon)
+    #[structopt(long = "box")]
+    corners: Option<String>,
+
     /// Map biking tracks
     #[structopt(long)]
     bike: bool,
@@ -119,8 +123,34 @@ fn main() {
         process::exit(2);
     }
 
-    // calculate min and max points
-    let (min, max) = heatmap::min_max(&trk_pts);
+    // calculate min and max points, or try to parse specified values
+    let (min, max) = if let Some(corners) = opt.corners {
+        let corners: Vec<&str> = corners.split(',').collect();
+        if corners.len() != 4 {
+            eprintln!("--box must be 4 comma sepearated values");
+            process::exit(1);
+        }
+        let max_lat = parse_lat_lng(corners[0]);
+        let max_lng = parse_lat_lng(corners[1]);
+        let min_lat = parse_lat_lng(corners[2]);
+        let min_lng = parse_lat_lng(corners[3]);
+        if max_lat <= min_lat || max_lng <= min_lng {
+            eprintln!("first coordinate of --box must be strictly greater than second coordinate");
+            process::exit(1);
+        }
+        (
+            heatmap::Point {
+                lat: min_lat,
+                lng: min_lng,
+            },
+            heatmap::Point {
+                lat: max_lat,
+                lng: max_lng,
+            },
+        )
+    } else {
+        heatmap::min_max(&trk_pts)
+    };
 
     let pixels = 1280;
     let map_info = heatmap::calculate_map(pixels, &min, &max, 2.0);
@@ -174,5 +204,14 @@ fn main() {
             .args(&[&image_filename])
             .output()
             .unwrap_or_else(|e| panic!("Failed to open {}\n{}", image_filename, e));
+    }
+}
+
+fn parse_lat_lng(val: &str) -> f64 {
+    if let Ok(v) = val.parse::<f64>() {
+        v
+    } else {
+        eprintln!("--box values must be decimal numbers");
+        process::exit(1);
     }
 }
