@@ -1,11 +1,14 @@
 #![feature(clamp)]
+#![warn(clippy::pedantic)]
 
 extern crate reqwest;
 
 use chrono::{DateTime, Utc};
 use image::{png, ImageDecoder, Rgb, RgbImage};
 use std::path::PathBuf;
-use std::process::{self, Command};
+use std::process;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use structopt::StructOpt;
 
 mod heatmap;
@@ -62,6 +65,7 @@ struct Opt {
     walk: bool,
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     let opt = Opt::from_args();
 
