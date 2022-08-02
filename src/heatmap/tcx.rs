@@ -12,18 +12,15 @@ pub fn get_pts(
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
-    let filter_strings = match type_filters {
-        Some(fs) => Some(
-            fs.iter()
-                .map(|f| match f {
-                    super::ActivityType::Bike => "Biking",
-                    super::ActivityType::Run => "Running",
-                    super::ActivityType::Walk => "Other",
-                })
-                .collect(),
-        ),
-        None => None,
-    };
+    let filter_strings = type_filters.as_ref().map(|fs| {
+        fs.iter()
+            .map(|f| match f {
+                super::ActivityType::Bike => "Biking",
+                super::ActivityType::Run => "Running",
+                super::ActivityType::Walk => "Other",
+            })
+            .collect()
+    });
 
     let mut trk_pts = None;
 
@@ -35,7 +32,7 @@ pub fn get_pts(
                 if let b"Activity" = e.name() {
                     trk_pts = Some(parse_activity(
                         &mut reader,
-                        &e,
+                        e,
                         filter_strings.as_ref(),
                         start,
                         end,
@@ -55,7 +52,7 @@ pub fn get_pts(
 }
 
 fn parse_activity(
-    mut reader: &mut Reader<&[u8]>,
+    reader: &mut Reader<&[u8]>,
     event: &BytesStart,
     filter_strings: Option<&Vec<&str>>,
     start: &Option<DateTime<Utc>>,
@@ -67,14 +64,12 @@ fn parse_activity(
 
     // Check if activity type matches provided filter
     if let Some(filter_strings) = filter_strings {
-        for attr in event.attributes() {
-            if let Ok(attr) = attr {
-                if let b"Sport" = attr.key {
-                    let sport = &attr.unescaped_value()?;
-                    let sport = std::str::from_utf8(sport)?;
-                    if !filter_strings.contains(&&sport[..]) {
-                        return Ok(Vec::new());
-                    }
+        for attr in event.attributes().flatten() {
+            if let b"Sport" = attr.key {
+                let sport = &attr.unescaped_value()?;
+                let sport = std::str::from_utf8(sport)?;
+                if !filter_strings.contains(&sport) {
+                    return Ok(Vec::new());
                 }
             }
         }
@@ -84,7 +79,7 @@ fn parse_activity(
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"Lap" = e.name() {
-                    trk_pts = Some(parse_lap(&mut reader, &e, start, end)?);
+                    trk_pts = Some(parse_lap(reader, e, start, end)?);
                 }
             }
             Ok(Event::End(ref e)) => {
@@ -105,7 +100,7 @@ fn parse_activity(
 }
 
 fn parse_lap(
-    mut reader: &mut Reader<&[u8]>,
+    reader: &mut Reader<&[u8]>,
     event: &BytesStart,
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
@@ -116,21 +111,19 @@ fn parse_lap(
 
     // check file time if start or end filters are set
     if start.is_some() || end.is_some() {
-        for attr in event.attributes() {
-            if let Ok(attr) = attr {
-                if let b"StartTime" = attr.key {
-                    let time =
-                        std::str::from_utf8(&attr.unescaped_value()?)?.parse::<DateTime<Utc>>()?;
-                    // return no points if start time is before start or after end filters
-                    if let Some(start) = start {
-                        if time < *start {
-                            return Ok(Vec::new());
-                        }
+        for attr in event.attributes().flatten() {
+            if let b"StartTime" = attr.key {
+                let time =
+                    std::str::from_utf8(&attr.unescaped_value()?)?.parse::<DateTime<Utc>>()?;
+                // return no points if start time is before start or after end filters
+                if let Some(start) = start {
+                    if time < *start {
+                        return Ok(Vec::new());
                     }
-                    if let Some(end) = end {
-                        if time > *end {
-                            return Ok(Vec::new());
-                        }
+                }
+                if let Some(end) = end {
+                    if time > *end {
+                        return Ok(Vec::new());
                     }
                 }
             }
@@ -141,7 +134,7 @@ fn parse_lap(
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"Track" = e.name() {
-                    trk_pts = Some(parse_track(&mut reader, &mut buf)?);
+                    trk_pts = Some(parse_track(reader, &mut buf)?);
                 }
             }
             Ok(Event::End(ref e)) => {
@@ -162,8 +155,8 @@ fn parse_lap(
 }
 
 fn parse_track(
-    mut reader: &mut Reader<&[u8]>,
-    mut buf: &mut Vec<u8>,
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut trk_pts = Vec::new();
 
@@ -173,7 +166,7 @@ fn parse_track(
         match reader.read_event(buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"Trackpoint" = e.name() {
-                    match parse_trackpoint(&mut reader, &mut buf) {
+                    match parse_trackpoint(reader, buf) {
                         Ok(pt) => trk_pts.push(pt),
                         Err(e) => eprintln!("{}", e),
                     }
@@ -192,8 +185,8 @@ fn parse_track(
 }
 
 fn parse_trackpoint(
-    mut reader: &mut Reader<&[u8]>,
-    mut buf: &mut Vec<u8>,
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
 ) -> Result<super::TrkPt, Box<dyn Error>> {
     let mut point = None;
     let mut time = None;
@@ -204,9 +197,9 @@ fn parse_trackpoint(
         match reader.read_event(buf) {
             Ok(Event::Start(ref e)) => match e.name() {
                 b"Position" => {
-                    point = Some(parse_position(&mut reader, &mut buf)?);
+                    point = Some(parse_position(reader, buf)?);
                 }
-                b"Time" => match parse_time(&mut reader, &mut buf) {
+                b"Time" => match parse_time(reader, buf) {
                     Ok(t) => time = Some(t),
                     Err(e) => eprintln!("{}", e),
                 },
@@ -228,8 +221,8 @@ fn parse_trackpoint(
 }
 
 fn parse_position(
-    mut reader: &mut Reader<&[u8]>,
-    mut buf: &mut Vec<u8>,
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
 ) -> Result<super::Point, Box<dyn Error>> {
     let mut lat = None;
     let mut lng = None;
@@ -240,10 +233,10 @@ fn parse_position(
         match reader.read_event(buf) {
             Ok(Event::Start(ref e)) => match e.name() {
                 b"LatitudeDegrees" => {
-                    lat = Some(parse_degrees(&mut reader, &mut buf)?);
+                    lat = Some(parse_degrees(reader, buf)?);
                 }
                 b"LongitudeDegrees" => {
-                    lng = Some(parse_degrees(&mut reader, &mut buf)?);
+                    lng = Some(parse_degrees(reader, buf)?);
                 }
                 _ => (),
             },
@@ -251,9 +244,8 @@ fn parse_position(
                 if let b"Position" = e.name() {
                     if let (Some(lat), Some(lng)) = (lat, lng) {
                         return Ok(super::Point { lat, lng });
-                    } else {
-                        bail!("Incomplete <Position>: {:?} {:?}", lat, lng);
                     }
+                    bail!("Incomplete <Position>: {:?} {:?}", lat, lng);
                 }
             }
             Ok(Event::Eof) => bail!("Hit EOF while in <trkseg>"),
@@ -274,7 +266,7 @@ fn parse_time(
             Ok(Event::Text(e)) => {
                 // read and parse text value in <time>
                 return e
-                    .unescape_and_decode(&reader)?
+                    .unescape_and_decode(reader)?
                     .parse::<DateTime<Utc>>()
                     .or_else(|err| bail!("Error parsing timestamp from time: {}", err));
             }
@@ -298,7 +290,7 @@ fn parse_degrees(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) -> Result<f64, B
             Ok(Event::Text(e)) => {
                 // read and parse text value in <LatitudeDegrees> or <LongitudeDegrees>
                 return e
-                    .unescape_and_decode(&reader)?
+                    .unescape_and_decode(reader)?
                     .parse::<f64>()
                     .or_else(|e| bail!("Unable to parse degrees: {}", e));
             }

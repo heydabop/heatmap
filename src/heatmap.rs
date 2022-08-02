@@ -60,11 +60,7 @@ impl fmt::Debug for TrkPt {
             f,
             "{:?} @ {:?}",
             self.center,
-            if let Some(time) = self.time {
-                Some(time.to_rfc3339())
-            } else {
-                None
-            }
+            self.time.map(|time| time.to_rfc3339())
         )
     }
 }
@@ -83,7 +79,7 @@ pub fn get_pts(
     start: &Option<DateTime<Utc>>,
     end: &Option<DateTime<Utc>>,
 ) -> Result<Vec<TrkPt>, Box<dyn Error>> {
-    let mut reader = Reader::from_str(&contents);
+    let mut reader = Reader::from_str(contents);
     reader.trim_text(true);
 
     let mut buf = Vec::new();
@@ -407,7 +403,7 @@ pub fn overlay_image(
     // composit path_image onto map_image
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
-    for (x, ref row) in factors.iter().enumerate() {
+    for (x, row) in factors.iter().enumerate() {
         for (y, &factor) in row.iter().enumerate() {
             let intensity = f64::from(factor) * single_step;
             if intensity > 0.0 {
@@ -587,7 +583,7 @@ mod tests {
 </gpx>
 "#;
         assert_eq!(
-            get_pts(&gpx, &None, &None, &None).unwrap(),
+            get_pts(gpx, &None, &None, &None).unwrap(),
             vec![
                 TrkPt {
                     center: Point {
@@ -729,7 +725,7 @@ mod tests {
  </Activities>
 </TrainingCenterDatabase>"#;
         assert_eq!(
-            get_pts(&tcx, &None, &None, &None).unwrap(),
+            get_pts(tcx, &None, &None, &None).unwrap(),
             vec![
                 TrkPt {
                     center: Point {

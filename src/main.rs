@@ -87,21 +87,15 @@ fn main() {
         process::exit(1);
     }
 
-    let start = match opt.start {
-        None => None,
-        Some(start) => Some(
-            start
-                .parse::<DateTime<Utc>>()
-                .expect("Unable to parse start into date"),
-        ),
-    };
-    let end = match opt.end {
-        None => None,
-        Some(end) => Some(
-            end.parse::<DateTime<Utc>>()
-                .expect("Unable to parse end into date"),
-        ),
-    };
+    let start = opt.start.map(|start| {
+        start
+            .parse::<DateTime<Utc>>()
+            .expect("Unable to parse start into date")
+    });
+    let end = opt.end.map(|end| {
+        end.parse::<DateTime<Utc>>()
+            .expect("Unable to parse end into date")
+    });
 
     let filters = if opt.bike || opt.run || opt.walk {
         let mut filters = Vec::new();
@@ -168,12 +162,11 @@ fn main() {
         opt.access_token
     ))
     .expect("Error GETing mapbox image");
-    if !mapbox_response.status().is_success() {
-        panic!(
-            "Non success response code {} from mapbox",
-            mapbox_response.status()
-        );
-    }
+    assert!(
+        mapbox_response.status().is_success(),
+        "Non success response code {} from mapbox",
+        mapbox_response.status()
+    );
     // load mapbox response into image buffer
     let decoder = png::PNGDecoder::new(mapbox_response).expect("Error decoding mapbox response");
     let (map_width, map_height) = decoder.dimensions();

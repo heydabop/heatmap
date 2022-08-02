@@ -12,18 +12,15 @@ pub fn get_pts(
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
 
-    let filter_strings = match type_filters {
-        Some(fs) => Some(
-            fs.iter()
-                .map(|f| match f {
-                    super::ActivityType::Bike => "1",
-                    super::ActivityType::Run => "9",
-                    super::ActivityType::Walk => "10",
-                })
-                .collect(),
-        ),
-        None => None,
-    };
+    let filter_strings = type_filters.as_ref().map(|fs| {
+        fs.iter()
+            .map(|f| match f {
+                super::ActivityType::Bike => "1",
+                super::ActivityType::Run => "9",
+                super::ActivityType::Walk => "10",
+            })
+            .collect()
+    });
 
     let mut trk_pts = Vec::new();
 
@@ -61,8 +58,8 @@ pub fn get_pts(
 }
 
 fn parse_metadata(
-    mut reader: &mut Reader<&[u8]>,
-    mut buf: &mut Vec<u8>,
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
 ) -> Result<Option<DateTime<Utc>>, Box<dyn Error>> {
     let mut time = None;
 
@@ -72,7 +69,7 @@ fn parse_metadata(
         match reader.read_event(buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"time" = e.name() {
-                    time = parse_time(&mut reader, &mut buf)?;
+                    time = parse_time(reader, buf)?;
                 }
             }
             Ok(Event::End(ref e)) => {
@@ -88,7 +85,7 @@ fn parse_metadata(
 }
 
 fn parse_trkpt(
-    mut reader: &mut Reader<&[u8]>,
+    reader: &mut Reader<&[u8]>,
     event: &BytesStart,
 ) -> Result<Option<super::TrkPt>, Box<dyn Error>> {
     let mut buf = Vec::new();
@@ -98,13 +95,11 @@ fn parse_trkpt(
     let mut time: Option<DateTime<Utc>> = None;
 
     // the <trkpt> tag has "lat" and "lon" attributes that we read and parse into floats
-    for attr in event.attributes() {
-        if let Ok(attr) = attr {
-            match attr.key {
-                b"lat" => lat = Some(std::str::from_utf8(&attr.unescaped_value()?)?.parse()?),
-                b"lon" => lng = Some(std::str::from_utf8(&attr.unescaped_value()?)?.parse()?),
-                _ => (),
-            }
+    for attr in event.attributes().flatten() {
+        match attr.key {
+            b"lat" => lat = Some(std::str::from_utf8(&attr.unescaped_value()?)?.parse()?),
+            b"lon" => lng = Some(std::str::from_utf8(&attr.unescaped_value()?)?.parse()?),
+            _ => (),
         }
     }
 
@@ -112,7 +107,7 @@ fn parse_trkpt(
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"time" = e.name() {
-                    time = parse_time(&mut reader, &mut buf)?;
+                    time = parse_time(reader, &mut buf)?;
                 }
             }
             Ok(Event::End(ref e)) => {
@@ -140,8 +135,8 @@ fn parse_trkpt(
 }
 
 fn parse_trk(
-    mut reader: &mut Reader<&[u8]>,
-    mut buf: &mut Vec<u8>,
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
     filter_strings: &Option<Vec<&str>>,
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut trk_pts = Vec::new();
@@ -151,10 +146,10 @@ fn parse_trk(
 
         match reader.read_event(buf) {
             Ok(Event::Start(ref e)) => match e.name() {
-                b"trkseg" => trk_pts = parse_trkseg(&mut reader, &mut buf)?,
+                b"trkseg" => trk_pts = parse_trkseg(reader, buf)?,
                 b"type" => {
                     if filter_strings.is_some()
-                        && !type_check(&mut reader, &mut buf, filter_strings.as_ref().unwrap())?
+                        && !type_check(reader, buf, filter_strings.as_ref().unwrap())?
                     {
                         return Ok(Vec::new());
                     }
@@ -174,7 +169,7 @@ fn parse_trk(
 }
 
 fn parse_trkseg(
-    mut reader: &mut Reader<&[u8]>,
+    reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
 ) -> Result<Vec<super::TrkPt>, Box<dyn Error>> {
     let mut trk_pts = Vec::new();
@@ -185,7 +180,7 @@ fn parse_trkseg(
         match reader.read_event(buf) {
             Ok(Event::Start(ref e)) => {
                 if let b"trkpt" = e.name() {
-                    if let Some(trkpt) = parse_trkpt(&mut reader, e)? {
+                    if let Some(trkpt) = parse_trkpt(reader, e)? {
                         trk_pts.push(trkpt);
                     }
                 }
@@ -214,7 +209,7 @@ fn parse_time(
         match reader.read_event(buf) {
             Ok(Event::Text(e)) => {
                 // read and parse text value in <time>
-                time = Some(match e.unescape_and_decode(&reader) {
+                time = Some(match e.unescape_and_decode(reader) {
                     Ok(s) => s.parse::<DateTime<Utc>>()?,
                     Err(e) => return Err(Box::new(e)),
                 });
@@ -242,7 +237,7 @@ fn type_check(
         match reader.read_event(buf) {
             Ok(Event::Text(e)) => {
                 // check that segment type matches filter
-                return Ok(match e.unescape_and_decode(&reader) {
+                return Ok(match e.unescape_and_decode(reader) {
                     Ok(s) => filter_strings.contains(&&s[..]),
                     Err(e) => return Err(Box::new(e)),
                 });
