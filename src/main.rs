@@ -1,4 +1,3 @@
-#![feature(clamp)]
 #![warn(clippy::pedantic)]
 
 extern crate reqwest;
