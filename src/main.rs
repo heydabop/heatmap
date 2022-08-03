@@ -3,7 +3,8 @@
 extern crate reqwest;
 
 use chrono::{DateTime, Utc};
-use image::{png, ImageDecoder, Rgb, RgbImage};
+use image::{io::Reader as ImageReader, ImageFormat, Rgb};
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::process;
 #[cfg(target_os = "macos")]
@@ -65,7 +66,8 @@ struct Opt {
 }
 
 #[allow(clippy::too_many_lines)]
-fn main() {
+#[tokio::main]
+async fn main() {
     let opt = Opt::from_args();
 
     let color: Vec<u8> = opt
@@ -161,6 +163,7 @@ fn main() {
         pixels,
         opt.access_token
     ))
+    .await
     .expect("Error GETing mapbox image");
     assert!(
         mapbox_response.status().is_success(),
@@ -168,15 +171,15 @@ fn main() {
         mapbox_response.status()
     );
     // load mapbox response into image buffer
-    let decoder = png::PNGDecoder::new(mapbox_response).expect("Error decoding mapbox response");
-    let (map_width, map_height) = decoder.dimensions();
-    #[allow(clippy::cast_possible_truncation)]
-    let map_image = RgbImage::from_raw(
-        map_width as u32,
-        map_height as u32,
-        decoder.read_image().expect("Erorr reading image into vec"),
-    )
-    .expect("Error reading RgbImage");
+    let mapbox_bytes = mapbox_response
+        .bytes()
+        .await
+        .expect("Error getting bytes from mapbox response");
+    let png_reader = ImageReader::with_format(Cursor::new(mapbox_bytes), ImageFormat::Png);
+    let map_image = png_reader
+        .decode()
+        .expect("Error decoding mapbox response")
+        .to_rgb8();
 
     // overlay path from trk_pts onto map image
     let heatmap_image = heatmap::overlay_image(
