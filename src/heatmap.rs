@@ -135,16 +135,16 @@ pub fn get_pts_from_files(
                                 trk_pts.push(pts);
                             }
                         }
-                        Err(e) => eprintln!("Error reading {:?}: {}", path, e),
+                        Err(e) => eprintln!("Error reading {path:?}: {e}"),
                     }
                 } else if f_type.is_dir() {
                     let mut dir_pts = get_pts_dir(path, type_filters, start, end);
                     trk_pts.append(&mut dir_pts);
                 } else {
-                    eprintln!("Unable to read {:?}", path);
+                    eprintln!("Unable to read {path:?}");
                 }
             }
-            Err(e) => eprintln!("Error stating {:?}: {}", path, e),
+            Err(e) => eprintln!("Error stating {path:?}: {e}"),
         }
     }
 
@@ -179,7 +179,7 @@ pub fn get_pts_dir(
     for entry in fs::read_dir(directory).expect("Error reading directory") {
         match entry {
             Ok(file) => file_list.push(file.path()),
-            Err(e) => eprintln!("Error reading directory entry: {}", e),
+            Err(e) => eprintln!("Error reading directory entry: {e}"),
         }
     }
 
@@ -398,7 +398,7 @@ pub fn overlay_image(
 
     // Take 75th percentile data point so that the top 25% "densest" pixels are all max alpha
     let single_step = factor / f64::from(sorted[sorted.len() / 4 * 3]);
-    println!("Tracks: {} -- Step: {:.2}", trks, single_step);
+    println!("Tracks: {trks} -- Step: {single_step:.2}");
 
     // composit path_image onto map_image
     #[allow(clippy::cast_possible_truncation)]

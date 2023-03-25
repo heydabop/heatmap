@@ -168,7 +168,7 @@ fn parse_track(
                 if let b"Trackpoint" = e.name() {
                     match parse_trackpoint(reader, buf) {
                         Ok(pt) => trk_pts.push(pt),
-                        Err(e) => eprintln!("{}", e),
+                        Err(e) => eprintln!("{e}"),
                     }
                 }
             }
@@ -201,7 +201,7 @@ fn parse_trackpoint(
                 }
                 b"Time" => match parse_time(reader, buf) {
                     Ok(t) => time = Some(t),
-                    Err(e) => eprintln!("{}", e),
+                    Err(e) => eprintln!("{e}"),
                 },
                 _ => (),
             },

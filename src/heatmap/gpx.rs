@@ -113,7 +113,7 @@ fn parse_trkpt(
             Ok(Event::End(ref e)) => {
                 if let b"trkpt" = e.name() {
                     if lat.is_none() || lng.is_none() {
-                        eprintln!("Incomplete <Trackpoint>: {:?} {:?} {:?}", lat, lng, time);
+                        eprintln!("Incomplete <Trackpoint>: {lat:?} {lng:?} {time:?}");
                         return Ok(None);
                     }
                     return Ok(Some(super::TrkPt {
