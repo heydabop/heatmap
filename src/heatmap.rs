@@ -124,7 +124,7 @@ pub fn get_pts_from_files(
 ) -> Vec<Vec<TrkPt>> {
     let mut trk_pts = Vec::new();
 
-    for path in file_list.iter() {
+    for path in file_list {
         match fs::metadata(path) {
             Ok(meta) => {
                 let f_type = meta.file_type();
@@ -387,7 +387,7 @@ pub fn overlay_image(
     let mut sorted = Vec::with_capacity(width as usize * height as usize);
 
     for row in &factors {
-        for &factor in row.iter() {
+        for &factor in row {
             if factor > 1 {
                 sorted.push(factor);
             }
